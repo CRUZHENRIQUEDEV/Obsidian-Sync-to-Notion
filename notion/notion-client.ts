@@ -12,6 +12,14 @@ export default class NotionClient {
   }
 
   /**
+   * Retorna o token de autenticação do Notion
+   * Necessário para permitir requisições diretas no NotionSyncService
+   */
+  getToken(): string {
+    return this.token;
+  }
+
+  /**
    * Método para manter compatibilidade com o código existente
    */
   getClient() {

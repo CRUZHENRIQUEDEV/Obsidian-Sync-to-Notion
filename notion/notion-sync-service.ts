@@ -41,6 +41,8 @@ export default class NotionSyncService {
     // Sincroniza cada arquivo
     for (const file of files) {
       try {
+        console.log(`Sincronizando arquivo: ${file.path}`);
+
         // Lê o conteúdo do arquivo
         const content = await vault.read(file.file);
 
@@ -53,6 +55,7 @@ export default class NotionSyncService {
 
         // Verifica se já existe uma página para este arquivo
         if (this.pageCache[file.path]) {
+          console.log(`Atualizando página existente para: ${file.path}`);
           // Atualiza a página existente
           await this.updateNotionPage(
             this.pageCache[file.path],
@@ -60,14 +63,18 @@ export default class NotionSyncService {
             blocks
           );
         } else {
+          console.log(`Criando nova página para: ${file.path}`);
           // Cria uma nova página
           const parentId = this.getParentPageId(file.parent);
           if (!parentId) {
             console.warn(`Pai não encontrado para ${file.path}, usando raiz`);
           }
 
+          const pageParentId = parentId || this.rootPageId;
+          console.log(`Criando na página pai: ${pageParentId}`);
+
           const notionPageId = await this.createNotionPage(
-            parentId || this.rootPageId,
+            pageParentId,
             file.name,
             blocks,
             metadata
@@ -75,6 +82,7 @@ export default class NotionSyncService {
 
           // Armazena no cache
           this.pageCache[file.path] = notionPageId;
+          console.log(`Página criada com ID: ${notionPageId}`);
         }
       } catch (error) {
         console.error(`Erro ao sincronizar arquivo ${file.path}:`, error);
@@ -121,7 +129,8 @@ export default class NotionSyncService {
         // Se for o primeiro nível, o pai é a raiz
         if (parts.length === 1) {
           if (!this.pageCache[folderPath]) {
-            const notionPageId = await this.createFolderPage(
+            console.log(`Criando pasta de primeiro nível: ${folderName}`);
+            const notionPageId = await this.notionClient.createFolderPage(
               this.rootPageId,
               folderName
             );
@@ -134,7 +143,8 @@ export default class NotionSyncService {
 
           if (parentId) {
             if (!this.pageCache[folderPath]) {
-              const notionPageId = await this.createFolderPage(
+              console.log(`Criando subpasta: ${folderName} em ${parentPath}`);
+              const notionPageId = await this.notionClient.createFolderPage(
                 parentId,
                 folderName
               );
@@ -144,7 +154,7 @@ export default class NotionSyncService {
             console.warn(
               `Pasta pai não encontrada para ${folderPath}, usando raiz`
             );
-            const notionPageId = await this.createFolderPage(
+            const notionPageId = await this.notionClient.createFolderPage(
               this.rootPageId,
               folderName
             );
@@ -158,54 +168,6 @@ export default class NotionSyncService {
   }
 
   /**
-   * Cria uma página de pasta no Notion
-   */
-  private async createFolderPage(
-    parentId: string,
-    folderName: string
-  ): Promise<string> {
-    try {
-      const response = await this.notionClient.getClient().pages.create({
-        parent: {
-          page_id: parentId,
-        },
-        properties: {
-          title: {
-            title: [
-              {
-                text: {
-                  content: folderName,
-                },
-              },
-            ],
-          },
-        },
-        children: [
-          {
-            object: "block",
-            type: "paragraph",
-            paragraph: {
-              rich_text: [
-                {
-                  type: "text",
-                  text: {
-                    content: `Pasta sincronizada do Obsidian: ${folderName}`,
-                  },
-                },
-              ],
-            },
-          },
-        ],
-      });
-
-      return response.id;
-    } catch (error) {
-      console.error(`Erro ao criar pasta ${folderName} em ${parentId}:`, error);
-      throw error;
-    }
-  }
-
-  /**
    * Cria uma página de nota no Notion
    */
   private async createNotionPage(
@@ -215,6 +177,8 @@ export default class NotionSyncService {
     metadata: Record<string, any> = {}
   ): Promise<string> {
     try {
+      console.log(`Criando página "${title}" no parent ${parentId}`);
+
       // Preparar propriedades com base nos metadados
       const properties: any = {
         title: {
@@ -246,15 +210,14 @@ export default class NotionSyncService {
         };
       }
 
-      const response = await this.notionClient.getClient().pages.create({
-        parent: {
-          page_id: parentId,
-        },
-        properties,
-        children: blocks,
-      });
+      // Usar o método createPage do cliente Notion modificado
+      const pageId = await this.notionClient.createPage(
+        parentId,
+        title,
+        blocks
+      );
 
-      return response.id;
+      return pageId;
     } catch (error) {
       console.error(`Erro ao criar página ${title} em ${parentId}:`, error);
       throw error;
@@ -270,8 +233,11 @@ export default class NotionSyncService {
     blocks: any[]
   ): Promise<void> {
     try {
-      // Atualiza o título
-      await this.notionClient.getClient().pages.update({
+      console.log(`Atualizando página: ${pageId} com título: ${title}`);
+
+      // Atualiza o título usando o cliente direto
+      const client = this.notionClient.getClient();
+      await client.pages.update({
         page_id: pageId,
         properties: {
           title: {
@@ -290,10 +256,12 @@ export default class NotionSyncService {
       await this.clearAllBlocks(pageId);
 
       // Adiciona os novos blocos
-      await this.notionClient.getClient().blocks.children.append({
+      await client.blocks.children.append({
         block_id: pageId,
         children: blocks,
       });
+
+      console.log(`Página ${pageId} atualizada com sucesso`);
     } catch (error) {
       console.error(`Erro ao atualizar página ${pageId}:`, error);
       throw error;
@@ -305,22 +273,28 @@ export default class NotionSyncService {
    */
   private async clearAllBlocks(pageId: string): Promise<void> {
     try {
+      console.log(`Limpando blocos da página ${pageId}`);
+
+      const client = this.notionClient.getClient();
+
       // Obtém todos os blocos existentes
-      const response = await this.notionClient
-        .getClient()
-        .blocks.children.list({
-          block_id: pageId,
-        });
+      const response = await client.blocks.children.list({
+        block_id: pageId,
+      });
+
+      console.log(`Encontrados ${response.results.length} blocos para remover`);
 
       // Remove cada bloco
       for (const block of response.results) {
-        await this.notionClient.getClient().blocks.delete({
+        await client.blocks.delete({
           block_id: block.id,
         });
 
         // Pequeno delay para evitar rate limits
         await new Promise((resolve) => setTimeout(resolve, 100));
       }
+
+      console.log(`Todos os blocos da página ${pageId} removidos com sucesso`);
     } catch (error) {
       console.error(`Erro ao limpar blocos da página ${pageId}:`, error);
       throw error;
