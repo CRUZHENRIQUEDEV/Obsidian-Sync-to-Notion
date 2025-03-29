@@ -1,0 +1,36 @@
+# Arquivos do compilador
+*.js
+*.js.map
+main.js
+*.d.ts
+
+# Arquivos do npm
+node_modules/
+npm-debug.log
+
+# Ignora informações de debug do VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# Arquivos do sistema
+.DS_Store
+Thumbs.db
+
+# Arquivos de configuração local (para não vazar tokens)
+.env
+.env.local
+
+# Diretório de build
+dist/
+
+# Diretório de cache
+.cache/
+
+# Arquivos temporários
+*.tmp
+*.bak
+*.swp
