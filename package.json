@@ -1,5 +1,20 @@
 {
+  "name": "obsidian-sync-to-notion",
+  "version": "0.1.0",
+  "description": "Plugin para sincronizar notas do Obsidian com o Notion",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production"
+  },
   "dependencies": {
-    "obsidian": "^1.8.7"
+    "@notionhq/client": "^2.3.0",
+    "obsidian": "^1.8.7",
+    "tslib": "^2.8.1"
+  },
+  "devDependencies": {
+    "builtin-modules": "^5.0.0",
+    "esbuild": "^0.16.10",
+    "typescript": "^4.9.4"
   }
 }

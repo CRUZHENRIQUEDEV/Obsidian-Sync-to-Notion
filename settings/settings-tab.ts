@@ -14,11 +14,11 @@ export default class SettingsTab extends PluginSettingTab {
 
 		containerEl.empty();
 
-		containerEl.createEl('h2', { text: 'Configurações de Sincronização com o Notion' });
+		containerEl.createEl('h2', { text: 'Notion Sync Settings' });
 
 		new Setting(containerEl)
-			.setName('Token da API do Notion')
-			.setDesc('Token de integração do Notion. Obtenha em https://www.notion.so/my-integrations')
+			.setName('Notion API Token')
+			.setDesc('Notion integration token. Get it at https://www.notion.so/my-integrations')
 			.addText(text => text
 				.setPlaceholder('Secret_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx')
 				.setValue(this.plugin.settings.notionToken)
@@ -28,8 +28,8 @@ export default class SettingsTab extends PluginSettingTab {
 				}));
 
 		new Setting(containerEl)
-			.setName('ID da Página Raiz')
-			.setDesc('ID da página do Notion onde a estrutura será sincronizada (formato: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx)')
+			.setName('Root Page ID')
+			.setDesc('ID of the Notion page where structure will be synced (format: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx)')
 			.addText(text => text
 				.setPlaceholder('xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx')
 				.setValue(this.plugin.settings.rootPageId)
@@ -39,8 +39,8 @@ export default class SettingsTab extends PluginSettingTab {
 				}));
 
 		new Setting(containerEl)
-			.setName('Sincronizar ao salvar')
-			.setDesc('Sincroniza automaticamente as notas com o Notion quando elas são salvas')
+			.setName('Sync on save')
+			.setDesc('Automatically sync notes with Notion when they are saved')
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.syncOnSave)
 				.onChange(async (value) => {
@@ -49,33 +49,33 @@ export default class SettingsTab extends PluginSettingTab {
 				}));
 
 		new Setting(containerEl)
-			.setName('Pastas excluídas')
-			.setDesc('Lista de pastas para excluir da sincronização (separadas por vírgula)')
+			.setName('Excluded folders')
+			.setDesc('List of folders to exclude from syncing (comma separated)')
 			.addText(text => text
-				.setPlaceholder('pasta1, pasta2/subpasta')
+				.setPlaceholder('folder1, folder2/subfolder')
 				.setValue(this.plugin.settings.excludeFolders.join(', '))
 				.onChange(async (value) => {
 					this.plugin.settings.excludeFolders = value.split(',').map(folder => folder.trim()).filter(folder => folder);
 					await this.plugin.saveSettings();
 				}));
 
-		containerEl.createEl('h3', { text: 'Ajuda e Informações' });
+		containerEl.createEl('h3', { text: 'Help & Information' });
 		
 		const infoDiv = containerEl.createEl('div', { cls: 'setting-item-info' });
-		infoDiv.createEl('p', { text: 'Para utilizar este plugin:' });
+		infoDiv.createEl('p', { text: 'To use this plugin:' });
 		
 		const ul = infoDiv.createEl('ul');
-		ul.createEl('li', { text: '1. Crie uma integração no Notion e obtenha o token de API.' });
-		ul.createEl('li', { text: '2. Compartilhe uma página do Notion com sua integração (na interface do Notion).' });
-		ul.createEl('li', { text: '3. Obtenha o ID da página compartilhada da URL.' });
-		ul.createEl('li', { text: '4. Configure as opções acima e use o comando "Sincronizar com Notion".' });
+		ul.createEl('li', { text: '1. Create a Notion integration and get the API token.' });
+		ul.createEl('li', { text: '2. Share a Notion page with your integration (in the Notion interface).' });
+		ul.createEl('li', { text: '3. Get the ID of the shared page from the URL.' });
+		ul.createEl('li', { text: '4. Configure the options above and use the "Sync to Notion" command.' });
 		
 		const lastSyncDiv = containerEl.createEl('div', { cls: 'setting-item' });
 		if (this.plugin.settings.lastSyncTimestamp) {
 			const date = new Date(this.plugin.settings.lastSyncTimestamp);
-			lastSyncDiv.createEl('p', { text: `Última sincronização: ${date.toLocaleString()}` });
+			lastSyncDiv.createEl('p', { text: `Last sync: ${date.toLocaleString()}` });
 		} else {
-			lastSyncDiv.createEl('p', { text: 'Nenhuma sincronização realizada ainda.' });
+			lastSyncDiv.createEl('p', { text: 'No sync performed yet.' });
 		}
 	}
 }

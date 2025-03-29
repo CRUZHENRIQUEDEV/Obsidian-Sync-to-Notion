@@ -1,155 +1,299 @@
-import { Client } from '@notionhq/client';
+import { requestUrl } from "obsidian";
 
 /**
- * Cliente da API do Notion configurado com o token de autenticação
+ * Cliente Notion simplificado que usa apenas requestUrl do Obsidian
+ * para evitar problemas de CORS
  */
 export default class NotionClient {
-    private client: Client;
-    
-    constructor(token: string) {
-        this.client = new Client({
-            auth: token,
-        });
+  private token: string;
+
+  constructor(token: string) {
+    this.token = token;
+  }
+
+  /**
+   * Método para manter compatibilidade com o código existente
+   */
+  getClient() {
+    console.warn("getClient() está deprecado, use os métodos diretos");
+    return {
+      pages: {
+        create: async (data: any) => {
+          return await this.obsidianRequest("/pages", "POST", data);
+        },
+        update: async (data: any) => {
+          return await this.obsidianRequest(
+            `/pages/${data.page_id}`,
+            "PATCH",
+            data
+          );
+        },
+        retrieve: async (data: any) => {
+          return await this.obsidianRequest(`/pages/${data.page_id}`, "GET");
+        },
+      },
+      blocks: {
+        children: {
+          list: async (data: any) => {
+            return await this.obsidianRequest(
+              `/blocks/${data.block_id}/children`,
+              "GET"
+            );
+          },
+          append: async (data: any) => {
+            return await this.obsidianRequest(
+              `/blocks/${data.block_id}/children`,
+              "PATCH",
+              data
+            );
+          },
+        },
+        delete: async (data: any) => {
+          return await this.obsidianRequest(
+            `/blocks/${data.block_id}`,
+            "DELETE"
+          );
+        },
+      },
+      users: {
+        me: async () => {
+          return await this.obsidianRequest("/users/me", "GET");
+        },
+      },
+    };
+  }
+
+  /**
+   * Método auxiliar para fazer requisições via Obsidian requestUrl
+   * para evitar problemas de CORS
+   */
+  private async obsidianRequest(
+    endpoint: string,
+    method: string,
+    body?: any
+  ): Promise<any> {
+    const url = `https://api.notion.com/v1${endpoint}`;
+    console.log(`Fazendo requisição ${method} para ${url}`);
+
+    try {
+      const params = {
+        url: url,
+        method: method,
+        headers: {
+          Authorization: `Bearer ${this.token}`,
+          "Notion-Version": "2022-06-28",
+          "Content-Type": "application/json",
+        },
+        contentType: "application/json",
+        body: body ? JSON.stringify(body) : undefined,
+      };
+
+      console.log("Parâmetros da requisição:", JSON.stringify(params, null, 2));
+
+      const response = await requestUrl(params);
+      console.log(`Resposta recebida com status ${response.status}`);
+      return response.json;
+    } catch (error) {
+      console.error(`Erro na requisição para ${url}:`, error);
+      throw error;
     }
-    
-    /**
-     * Obtém o cliente da API do Notion
-     */
-    getClient(): Client {
-        return this.client;
+  }
+
+  /**
+   * Testa a conexão com a API do Notion
+   */
+  async testConnection(): Promise<boolean> {
+    try {
+      console.log("Testando conexão com Notion...");
+      console.log(
+        "Usando token:",
+        this.token ? `${this.token.substring(0, 4)}...` : "indefinido"
+      );
+
+      const response = await this.obsidianRequest("/users/me", "GET");
+      console.log("API Response:", response);
+      return true;
+    } catch (error) {
+      console.error("Erro de conexão:", error);
+      return false;
     }
-    
-    /**
-     * Verifica se a conexão com a API do Notion está funcionando
-     */
-    async testConnection(): Promise<boolean> {
-        try {
-            // Tenta obter usuários para verificar se o token é válido
-            const response = await this.client.users.list({});
-            return response.results.length > 0;
-        } catch (error) {
-            console.error('Erro ao testar conexão com o Notion:', error);
-            return false;
-        }
-    }
-    
-    /**
-     * Obtém informações de uma página do Notion
-     */
-    async getPage(pageId: string) {
-        try {
-            return await this.client.pages.retrieve({
-                page_id: pageId,
-            });
-        } catch (error) {
-            console.error(`Erro ao obter página ${pageId}:`, error);
-            throw error;
-        }
-    }
-    
-    /**
-     * Cria uma nova página dentro de uma página existente
-     */
-    async createPage(parentPageId: string, title: string, content: string) {
-        try {
-            const response = await this.client.pages.create({
-                parent: {
-                    page_id: parentPageId,
+  }
+
+  /**
+   * Cria uma nova página no Notion usando requestUrl do Obsidian
+   */
+  async createPage(
+    parentPageId: string,
+    title: string,
+    blocks: any[]
+  ): Promise<string> {
+    try {
+      console.log(`Criando página "${title}" no parent ${parentPageId}`);
+
+      const data = {
+        parent: {
+          page_id: parentPageId,
+        },
+        properties: {
+          title: {
+            title: [
+              {
+                text: {
+                  content: title,
                 },
-                properties: {
-                    title: {
-                        title: [
-                            {
-                                text: {
-                                    content: title,
-                                },
-                            },
-                        ],
-                    },
+              },
+            ],
+          },
+        },
+        children: blocks,
+      };
+
+      const response = await this.obsidianRequest("/pages", "POST", data);
+      console.log(`Página criada com sucesso, ID: ${response.id}`);
+      return response.id;
+    } catch (error) {
+      console.error(
+        `Erro ao criar página "${title}" em ${parentPageId}:`,
+        error
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Obtém informações sobre uma página do Notion
+   */
+  async getPage(pageId: string) {
+    try {
+      return await this.obsidianRequest(`/pages/${pageId}`, "GET");
+    } catch (error) {
+      console.error(`Erro ao obter página ${pageId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Atualiza o conteúdo de uma página existente
+   */
+  async updatePageContent(pageId: string, content: string) {
+    try {
+      console.log(`Atualizando conteúdo da página ${pageId}`);
+
+      // Primeiro, limpar todos os blocos existentes
+      await this.clearAllBlocks(pageId);
+
+      // Depois, adicionar o novo conteúdo
+      const blocks = [
+        {
+          object: "block",
+          type: "paragraph",
+          paragraph: {
+            rich_text: [
+              {
+                type: "text",
+                text: {
+                  content,
                 },
-                // Este é um placeholder. Na implementação real, o conteúdo precisará ser 
-                // convertido para o formato de blocos do Notion
-                children: [
-                    {
-                        object: 'block',
-                        type: 'paragraph',
-                        paragraph: {
-                            rich_text: [
-                                {
-                                    type: 'text',
-                                    text: {
-                                        content,
-                                    },
-                                },
-                            ],
-                        },
-                    },
-                ],
-            });
-            
-            return response;
-        } catch (error) {
-            console.error(`Erro ao criar página "${title}" em ${parentPageId}:`, error);
-            throw error;
-        }
+              },
+            ],
+          },
+        },
+      ];
+
+      await this.obsidianRequest(`/blocks/${pageId}/children`, "PATCH", {
+        children: blocks,
+      });
+
+      console.log(`Conteúdo da página atualizado com sucesso`);
+    } catch (error) {
+      console.error(`Erro ao atualizar conteúdo da página ${pageId}:`, error);
+      throw error;
     }
-    
-    /**
-     * Atualiza o conteúdo de uma página existente
-     */
-    async updatePageContent(pageId: string, content: string) {
-        try {
-            // Primeiro, precisamos limpar todos os blocos existentes
-            await this.clearAllBlocks(pageId);
-            
-            // Depois, adicionamos o novo conteúdo
-            await this.client.blocks.children.append({
-                block_id: pageId,
-                children: [
-                    {
-                        object: 'block',
-                        type: 'paragraph',
-                        paragraph: {
-                            rich_text: [
-                                {
-                                    type: 'text',
-                                    text: {
-                                        content,
-                                    },
-                                },
-                            ],
-                        },
-                    },
-                ],
-            });
-        } catch (error) {
-            console.error(`Erro ao atualizar conteúdo da página ${pageId}:`, error);
-            throw error;
-        }
+  }
+
+  /**
+   * Obtém todos os blocos de uma página
+   */
+  async getBlocks(pageId: string) {
+    try {
+      return await this.obsidianRequest(`/blocks/${pageId}/children`, "GET");
+    } catch (error) {
+      console.error(`Erro ao obter blocos da página ${pageId}:`, error);
+      throw error;
     }
-    
-    /**
-     * Remove todos os blocos de uma página
-     */
-    private async clearAllBlocks(pageId: string) {
-        try {
-            // Obtém todos os blocos existentes
-            const response = await this.client.blocks.children.list({
-                block_id: pageId,
-            });
-            
-            // Remove cada bloco
-            for (const block of response.results) {
-                await this.client.blocks.delete({
-                    block_id: block.id,
-                });
-                
-                // Pequeno delay para evitar rate limits
-                await new Promise(resolve => setTimeout(resolve, 100));
-            }
-        } catch (error) {
-            console.error(`Erro ao limpar blocos da página ${pageId}:`, error);
-            throw error;
-        }
+  }
+
+  /**
+   * Remove todos os blocos de uma página
+   */
+  private async clearAllBlocks(pageId: string) {
+    try {
+      console.log(`Limpando blocos da página ${pageId}`);
+
+      // Obtém todos os blocos existentes
+      const response = await this.getBlocks(pageId);
+      console.log(`Encontrados ${response.results.length} blocos para remover`);
+
+      // Remove cada bloco
+      for (const block of response.results) {
+        await this.obsidianRequest(`/blocks/${block.id}`, "DELETE");
+        // Pequeno delay para evitar rate limits
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+
+      console.log(`Todos os blocos removidos com sucesso`);
+    } catch (error) {
+      console.error(`Erro ao limpar blocos da página ${pageId}:`, error);
+      throw error;
     }
+  }
+
+  /**
+   * Cria uma página de pasta no Notion
+   */
+  async createFolderPage(parentId: string, folderName: string) {
+    try {
+      console.log(`Criando pasta "${folderName}" no parent ${parentId}`);
+
+      const data = {
+        parent: {
+          page_id: parentId,
+        },
+        properties: {
+          title: {
+            title: [
+              {
+                text: {
+                  content: folderName,
+                },
+              },
+            ],
+          },
+        },
+        children: [
+          {
+            object: "block",
+            type: "paragraph",
+            paragraph: {
+              rich_text: [
+                {
+                  type: "text",
+                  text: {
+                    content: `Pasta sincronizada do Obsidian: ${folderName}`,
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      };
+
+      const response = await this.obsidianRequest("/pages", "POST", data);
+      console.log(`Pasta criada com sucesso, ID: ${response.id}`);
+      return response.id;
+    } catch (error) {
+      console.error(`Erro ao criar pasta ${folderName} em ${parentId}:`, error);
+      throw error;
+    }
+  }
 }
