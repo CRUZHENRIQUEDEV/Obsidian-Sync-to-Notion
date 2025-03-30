@@ -1,20 +1,22 @@
 # Obsidian Notion Sync
 
-<div align="center">
+<p align="center">
+  <img src="https://img.shields.io/github/v/release/CRUZHENRIQUEDEV/obsidian-notion-sync?style=for-the-badge&sort=semver" alt="Version">
+  <img src="https://img.shields.io/github/license/CRUZHENRIQUEDEV/obsidian-notion-sync?style=for-the-badge" alt="License">
+  <img src="https://img.shields.io/badge/dynamic/json?logo=obsidian&color=7e6ad6&label=downloads&query=%24%5B%22obsidian-notion-sync%22%5D.downloads&url=https%3A%2F%2Fraw.githubusercontent.com%2Fobsidianmd%2Fobsidian-releases%2Fmaster%2Fcommunity-plugin-stats.json&style=for-the-badge" alt="Obsidian Downloads">
+</p>
 
-![Version](https://img.shields.io/github/v/release/CRUZHENRIQUEDEV/obsidian-notion-sync?style=for-the-badge&sort=semver)
-![License](https://img.shields.io/github/license/CRUZHENRIQUEDEV/obsidian-notion-sync?style=for-the-badge)
-[![Obsidian Downloads](https://img.shields.io/badge/dynamic/json?logo=obsidian&color=7e6ad6&label=downloads&query=%24%5B%22obsidian-notion-sync%22%5D.downloads&url=https%3A%2F%2Fraw.githubusercontent.com%2Fobsidianmd%2Fobsidian-releases%2Fmaster%2Fcommunity-plugin-stats.json&style=for-the-badge)](https://obsidian.md/plugins?id=obsidian-notion-sync)
+<p align="center">
+  <img src="https://raw.githubusercontent.com/CRUZHENRIQUEDEV/obsidian-notion-sync/main/assets/logo.png" alt="Obsidian Notion Sync Logo" width="200"/>
+</p>
 
-<br/>
+<p align="center">
+  <b>A seamless bridge between Obsidian and Notion</b>
+</p>
 
-<img src="https://raw.githubusercontent.com/CRUZHENRIQUEDEV/obsidian-notion-sync/main/assets/logo.png" alt="Obsidian Notion Sync Logo" width="200"/>
-
-**A seamless bridge between Obsidian and Notion**
-
-[English](#english) | [Português](#português)
-
-</div>
+<p align="center">
+  <a href="#english">English</a> | <a href="#português">Português</a>
+</p>
 
 ---
 
@@ -75,7 +77,9 @@ Before using the plugin, you need:
 <br>
 <p align="center">
   <img src="https://raw.githubusercontent.com/CRUZHENRIQUEDEV/obsidian-notion-sync/main/assets/setup1.png" alt="Setup 1" width="600">
-  <br><br>
+</p>
+<br>
+<p align="center">
   <img src="https://raw.githubusercontent.com/CRUZHENRIQUEDEV/obsidian-notion-sync/main/assets/setup2.png" alt="Setup 2" width="600">
 </p>
 </details>
@@ -194,7 +198,9 @@ Antes de usar o plugin, você precisa:
 <br>
 <p align="center">
   <img src="https://raw.githubusercontent.com/CRUZHENRIQUEDEV/obsidian-notion-sync/main/assets/setup1.png" alt="Configuração 1" width="600">
-  <br><br>
+</p>
+<br>
+<p align="center">
   <img src="https://raw.githubusercontent.com/CRUZHENRIQUEDEV/obsidian-notion-sync/main/assets/setup2.png" alt="Configuração 2" width="600">
 </p>
 </details>
@@ -273,8 +279,6 @@ If you find this plugin useful, please consider:
 
 ---
 
-<div align="center">
-
-Developed with ❤️ by [Henrique da Cruz Silva](https://github.com/CRUZHENRIQUEDEV)
-
-</div>
+<p align="center">
+  Developed with ❤️ by <a href="https://github.com/CRUZHENRIQUEDEV">Henrique da Cruz Silva</a>
+</p>
