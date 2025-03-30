@@ -11,6 +11,135 @@ export default class NotionClient {
     this.token = token;
   }
 
+  
+  
+  async createPageWithMarkdown(
+    parentId: string,
+    title: string,
+    markdownContent: string
+  ): Promise<string> {
+    try {
+      console.log(`Criando página "${title}" com conteúdo Markdown direto`);
+
+      // Cria a página com o conteúdo Markdown como um bloco de código
+      const pageData = {
+        parent: {
+          page_id: parentId,
+        },
+        properties: {
+          title: {
+            title: [
+              {
+                text: {
+                  content: title,
+                },
+              },
+            ],
+          },
+        },
+        children: [
+          {
+            object: "block",
+            type: "code",
+            code: {
+              rich_text: [
+                {
+                  type: "text",
+                  text: {
+                    content: markdownContent,
+                  },
+                },
+              ],
+              language: "markdown",
+            },
+          },
+        ],
+      };
+
+      const params = {
+        url: "https://api.notion.com/v1/pages",
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.token}`,
+          "Notion-Version": "2022-06-28",
+          "Content-Type": "application/json",
+        },
+        contentType: "application/json",
+        body: JSON.stringify(pageData),
+      };
+
+      const response = await requestUrl(params);
+
+      if (response.status === 200) {
+        const pageId = response.json.id;
+        console.log(`Página criada com sucesso. ID: ${pageId}`);
+        return pageId;
+      } else {
+        throw new Error(`Resposta inesperada: ${response.status}`);
+      }
+    } catch (error) {
+      console.error(`Erro ao criar página com Markdown: ${error}`);
+      throw error;
+    }
+  }
+
+  // Adicionar ao arquivo notion-client.ts na classe NotionClient
+  async sendRequest(
+    endpoint: string,
+    method: string,
+    body?: any
+  ): Promise<any> {
+    return await this.obsidianRequest(endpoint, method, body);
+  }
+
+  /**
+   * Verifica se uma página já existe no Notion com o mesmo título em um parent
+   * Adicionar ao arquivo notion-client.ts
+   */
+  async pageExistsWithTitle(
+    parentId: string,
+    title: string
+  ): Promise<string | null> {
+    try {
+      console.log(`Verificando se página "${title}" já existe em ${parentId}`);
+
+      // Busca páginas filhas do parent
+      const params = {
+        url: `https://api.notion.com/v1/blocks/${parentId}/children?page_size=100`,
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${this.token}`,
+          "Notion-Version": "2022-06-28",
+        },
+      };
+
+      const response = await requestUrl(params);
+
+      if (response.status === 200) {
+        const pages = response.json.results.filter(
+          (block: any) => block.type === "child_page"
+        );
+
+        // Procura uma página com o mesmo título (ignorando case)
+        for (const page of pages) {
+          if (
+            page.child_page &&
+            title.toLowerCase() === page.child_page.title?.toLowerCase()
+          ) {
+            console.log(`Página "${title}" encontrada com ID: ${page.id}`);
+            return page.id;
+          }
+        }
+      }
+
+      console.log(`Página "${title}" não encontrada em ${parentId}`);
+      return null;
+    } catch (error) {
+      console.error(`Erro ao verificar existência da página ${title}:`, error);
+      return null;
+    }
+  }
+
   /**
    * Retorna o token de autenticação do Notion
    * Necessário para permitir requisições diretas no NotionSyncService

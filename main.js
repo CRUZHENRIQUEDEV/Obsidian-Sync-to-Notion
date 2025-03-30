@@ -27,13 +27,115 @@ __export(main_exports, {
   default: () => NotionSyncPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian3 = require("obsidian");
+var import_obsidian4 = require("obsidian");
+
+// notion/notion-sync-service.ts
+var import_obsidian2 = require("obsidian");
 
 // notion/notion-client.ts
 var import_obsidian = require("obsidian");
 var NotionClient = class {
   constructor(token) {
     this.token = token;
+  }
+  async createPageWithMarkdown(parentId, title, markdownContent) {
+    try {
+      console.log(`Criando p\xE1gina "${title}" com conte\xFAdo Markdown direto`);
+      const pageData = {
+        parent: {
+          page_id: parentId
+        },
+        properties: {
+          title: {
+            title: [
+              {
+                text: {
+                  content: title
+                }
+              }
+            ]
+          }
+        },
+        children: [
+          {
+            object: "block",
+            type: "code",
+            code: {
+              rich_text: [
+                {
+                  type: "text",
+                  text: {
+                    content: markdownContent
+                  }
+                }
+              ],
+              language: "markdown"
+            }
+          }
+        ]
+      };
+      const params = {
+        url: "https://api.notion.com/v1/pages",
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.token}`,
+          "Notion-Version": "2022-06-28",
+          "Content-Type": "application/json"
+        },
+        contentType: "application/json",
+        body: JSON.stringify(pageData)
+      };
+      const response = await (0, import_obsidian.requestUrl)(params);
+      if (response.status === 200) {
+        const pageId = response.json.id;
+        console.log(`P\xE1gina criada com sucesso. ID: ${pageId}`);
+        return pageId;
+      } else {
+        throw new Error(`Resposta inesperada: ${response.status}`);
+      }
+    } catch (error) {
+      console.error(`Erro ao criar p\xE1gina com Markdown: ${error}`);
+      throw error;
+    }
+  }
+  // Adicionar ao arquivo notion-client.ts na classe NotionClient
+  async sendRequest(endpoint, method, body) {
+    return await this.obsidianRequest(endpoint, method, body);
+  }
+  /**
+   * Verifica se uma página já existe no Notion com o mesmo título em um parent
+   * Adicionar ao arquivo notion-client.ts
+   */
+  async pageExistsWithTitle(parentId, title) {
+    var _a;
+    try {
+      console.log(`Verificando se p\xE1gina "${title}" j\xE1 existe em ${parentId}`);
+      const params = {
+        url: `https://api.notion.com/v1/blocks/${parentId}/children?page_size=100`,
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${this.token}`,
+          "Notion-Version": "2022-06-28"
+        }
+      };
+      const response = await (0, import_obsidian.requestUrl)(params);
+      if (response.status === 200) {
+        const pages = response.json.results.filter(
+          (block) => block.type === "child_page"
+        );
+        for (const page of pages) {
+          if (page.child_page && title.toLowerCase() === ((_a = page.child_page.title) == null ? void 0 : _a.toLowerCase())) {
+            console.log(`P\xE1gina "${title}" encontrada com ID: ${page.id}`);
+            return page.id;
+          }
+        }
+      }
+      console.log(`P\xE1gina "${title}" n\xE3o encontrada em ${parentId}`);
+      return null;
+    } catch (error) {
+      console.error(`Erro ao verificar exist\xEAncia da p\xE1gina ${title}:`, error);
+      return null;
+    }
   }
   /**
    * Retorna o token de autenticação do Notion
@@ -294,12 +396,202 @@ var NotionClient = class {
 };
 
 // notion/notion-utils.ts
+function sanitizeContent(content) {
+  let sanitized = content.replace(/[\u0000-\u001F\u007F-\u009F]/g, "");
+  const MAX_PARAGRAPH_LENGTH = 1900;
+  const paragraphs = sanitized.split("\n\n");
+  const limitedParagraphs = paragraphs.map((p) => {
+    if (p.length > MAX_PARAGRAPH_LENGTH) {
+      return p.substring(0, MAX_PARAGRAPH_LENGTH) + "...";
+    }
+    return p;
+  });
+  return limitedParagraphs.join("\n\n");
+}
+function splitIntoManageableBlocks(blocks) {
+  const MAX_BLOCKS_PER_REQUEST = 40;
+  const chunks = [];
+  for (let i = 0; i < blocks.length; i += MAX_BLOCKS_PER_REQUEST) {
+    chunks.push(blocks.slice(i, i + MAX_BLOCKS_PER_REQUEST));
+  }
+  return chunks;
+}
+function sanitizeBlocks(blocks) {
+  return blocks.map((block) => {
+    var _a, _b, _c, _d, _e, _f, _g, _h;
+    if (block.type === "code" && ((_d = (_c = (_b = (_a = block.code) == null ? void 0 : _a.rich_text) == null ? void 0 : _b[0]) == null ? void 0 : _c.text) == null ? void 0 : _d.content)) {
+      const content = block.code.rich_text[0].text.content;
+      if (content.length > 1900) {
+        block.code.rich_text[0].text.content = content.substring(0, 1900) + "\n\n... (conte\xFAdo truncado)";
+      }
+      block.code.rich_text[0].text.content = block.code.rich_text[0].text.content.replace(/\\/g, "\\\\").replace(/\u0000-\u001F/g, "");
+    }
+    if (block.type === "paragraph" && ((_h = (_g = (_f = (_e = block.paragraph) == null ? void 0 : _e.rich_text) == null ? void 0 : _f[0]) == null ? void 0 : _g.text) == null ? void 0 : _h.content)) {
+      const content = block.paragraph.rich_text[0].text.content;
+      if (content.length > 1900) {
+        block.paragraph.rich_text[0].text.content = content.substring(0, 1900) + "...";
+      }
+    }
+    return block;
+  });
+}
+function enhancedMarkdownToNotionBlocks(markdownContent) {
+  const sanitizedMarkdown = sanitizeContent(markdownContent);
+  let rawBlocks = markdownToNotionBlocks(sanitizedMarkdown);
+  rawBlocks = rawBlocks.map((block) => {
+    var _a, _b, _c, _d;
+    if (block.type === "code" && ((_d = (_c = (_b = (_a = block.code) == null ? void 0 : _a.rich_text) == null ? void 0 : _b[0]) == null ? void 0 : _c.text) == null ? void 0 : _d.content) && block.code.rich_text[0].text.content.length > 1800) {
+      const content = block.code.rich_text[0].text.content;
+      const language = block.code.language;
+      const parts = splitContentIntoChunks(content, 1800);
+      return parts.map((part) => createCodeBlock(part, language));
+    }
+    return block;
+  }).flat();
+  return sanitizeBlocks(rawBlocks);
+}
+function splitContentIntoChunks(content, maxSize) {
+  const chunks = [];
+  let start = 0;
+  while (start < content.length) {
+    let end = start + maxSize;
+    if (end < content.length) {
+      const newlinePos = content.lastIndexOf("\n", end);
+      if (newlinePos > start) {
+        end = newlinePos;
+      }
+    } else {
+      end = content.length;
+    }
+    chunks.push(content.substring(start, end));
+    start = end + 1;
+  }
+  return chunks;
+}
+function createCodeBlock(content, language = "") {
+  content = content.replace(/^```[\w-]*\n|```$/g, "");
+  content = content.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\t/g, "  ");
+  const supportedLanguages = [
+    "abap",
+    "arduino",
+    "bash",
+    "basic",
+    "c",
+    "clojure",
+    "coffeescript",
+    "cpp",
+    "csharp",
+    "css",
+    "dart",
+    "diff",
+    "docker",
+    "elixir",
+    "elm",
+    "erlang",
+    "flow",
+    "fortran",
+    "fsharp",
+    "gherkin",
+    "glsl",
+    "go",
+    "graphql",
+    "groovy",
+    "haskell",
+    "html",
+    "java",
+    "javascript",
+    "json",
+    "julia",
+    "kotlin",
+    "latex",
+    "less",
+    "lisp",
+    "livescript",
+    "lua",
+    "makefile",
+    "markdown",
+    "markup",
+    "matlab",
+    "mermaid",
+    "nix",
+    "objective-c",
+    "ocaml",
+    "pascal",
+    "perl",
+    "php",
+    "plain text",
+    "powershell",
+    "prolog",
+    "protobuf",
+    "python",
+    "r",
+    "reason",
+    "ruby",
+    "rust",
+    "sass",
+    "scala",
+    "scheme",
+    "scss",
+    "shell",
+    "sql",
+    "swift",
+    "typescript",
+    "vb.net",
+    "verilog",
+    "vhdl",
+    "visual basic",
+    "webassembly",
+    "xml",
+    "yaml"
+  ];
+  const normalizedLanguage = language.toLowerCase().trim();
+  const finalLanguage = supportedLanguages.includes(normalizedLanguage) ? normalizedLanguage : "plain text";
+  return {
+    object: "block",
+    type: "code",
+    code: {
+      rich_text: [
+        {
+          type: "text",
+          text: {
+            content: content.trim()
+          }
+        }
+      ],
+      language: finalLanguage
+    }
+  };
+}
 function markdownToNotionBlocks(markdownContent) {
   const blocks = [];
   const lines = markdownContent.split("\n");
   let currentParagraph = "";
+  let inCodeBlock = false;
+  let codeContent = "";
+  let codeLanguage = "";
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+    if (line.startsWith("```")) {
+      if (!inCodeBlock) {
+        inCodeBlock = true;
+        if (currentParagraph) {
+          blocks.push(createParagraphBlock(currentParagraph));
+          currentParagraph = "";
+        }
+        codeLanguage = line.substring(3).trim();
+        codeContent = "";
+      } else {
+        inCodeBlock = false;
+        blocks.push(createCodeBlock(codeContent, codeLanguage));
+        codeContent = "";
+        codeLanguage = "";
+      }
+      continue;
+    }
+    if (inCodeBlock) {
+      codeContent += line + "\n";
+      continue;
+    }
     if (line.startsWith("# ")) {
       if (currentParagraph) {
         blocks.push(createParagraphBlock(currentParagraph));
@@ -342,22 +634,6 @@ function markdownToNotionBlocks(markdownContent) {
       blocks.push(createNumberedListBlock(itemContent));
       continue;
     }
-    if (line.startsWith("```")) {
-      if (currentParagraph) {
-        blocks.push(createParagraphBlock(currentParagraph));
-        currentParagraph = "";
-      }
-      const language = line.substring(3).trim();
-      let codeContent = "";
-      let j = i + 1;
-      while (j < lines.length && !lines[j].startsWith("```")) {
-        codeContent += lines[j] + "\n";
-        j++;
-      }
-      blocks.push(createCodeBlock(codeContent, language));
-      i = j;
-      continue;
-    }
     if (line.trim() === "") {
       if (currentParagraph) {
         blocks.push(createParagraphBlock(currentParagraph));
@@ -370,6 +646,9 @@ function markdownToNotionBlocks(markdownContent) {
     } else {
       currentParagraph = line;
     }
+  }
+  if (inCodeBlock && codeContent) {
+    blocks.push(createCodeBlock(codeContent, codeLanguage));
   }
   if (currentParagraph) {
     blocks.push(createParagraphBlock(currentParagraph));
@@ -441,23 +720,6 @@ function createNumberedListBlock(content) {
     }
   };
 }
-function createCodeBlock(content, language = "") {
-  return {
-    object: "block",
-    type: "code",
-    code: {
-      rich_text: [
-        {
-          type: "text",
-          text: {
-            content
-          }
-        }
-      ],
-      language: language || "plain text"
-    }
-  };
-}
 function processMarkdownFrontmatter(content) {
   const frontmatterRegex = /^---\s*\n([\s\S]*?)\n---\s*\n([\s\S]*)$/;
   const match = content.match(frontmatterRegex);
@@ -485,58 +747,628 @@ function processMarkdownFrontmatter(content) {
   };
 }
 
+// utils/sync-persistence.ts
+var import_crypto = require("crypto");
+var FileTracker = class {
+  constructor(initialTracking = {}) {
+    this.fileHashes = initialTracking;
+  }
+  /**
+   * Calcula o hash MD5 do conteúdo de um arquivo
+   */
+  async calculateFileHash(content) {
+    return (0, import_crypto.createHash)("md5").update(content).digest("hex");
+  }
+  /**
+   * Verifica se um arquivo foi modificado desde a última sincronização
+   */
+  async hasFileChanged(file, vault) {
+    if (!this.fileHashes[file.path]) {
+      return true;
+    }
+    const lastModified = file.stat.mtime;
+    const lastSync = this.fileHashes[file.path].lastSync;
+    if (lastModified > lastSync) {
+      const content = await vault.read(file);
+      const currentHash = await this.calculateFileHash(content);
+      const storedHash = this.fileHashes[file.path].hash;
+      return currentHash !== storedHash;
+    }
+    return false;
+  }
+  /**
+   * Atualiza o hash e o timestamp de sincronização de um arquivo
+   */
+  async updateFileTracking(file, vault) {
+    const content = await vault.read(file);
+    const hash = await this.calculateFileHash(content);
+    this.fileHashes[file.path] = {
+      hash,
+      lastSync: Date.now()
+    };
+  }
+  /**
+   * Retorna o mapeamento de todos os hashes
+   */
+  getAllTracking() {
+    return { ...this.fileHashes };
+  }
+  /**
+   * Remove arquivos excluídos do rastreamento
+   */
+  cleanupDeletedFiles(existingPaths) {
+    const pathSet = new Set(existingPaths);
+    for (const path in this.fileHashes) {
+      if (!pathSet.has(path)) {
+        delete this.fileHashes[path];
+      }
+    }
+  }
+};
+
 // notion/notion-sync-service.ts
 var NotionSyncService = class {
-  constructor(notionToken, rootPageId) {
+  constructor(notionToken, rootPageId, fileTracking = {}) {
     this.pageCache = {};
     this.notionClient = new NotionClient(notionToken);
     this.rootPageId = rootPageId;
+    this.fileTracker = new FileTracker(fileTracking);
+  }
+  /**
+   * Método aprimorado para criar páginas no Notion com melhor formatação
+   * Adicionar na classe NotionSyncService
+   */
+  async createFormattedNotionPage(parentId, title, markdownContent, metadata = {}) {
+    try {
+      console.log(`Criando p\xE1gina formatada "${title}" no parent ${parentId}`);
+      const pageProperties = {
+        title: {
+          title: [
+            {
+              text: {
+                content: title
+              }
+            }
+          ]
+        }
+      };
+      for (const [key, value] of Object.entries(metadata)) {
+        if (!key.trim())
+          continue;
+        pageProperties[key] = {
+          rich_text: [
+            {
+              type: "text",
+              text: {
+                content: String(value).substring(0, 1900)
+              }
+            }
+          ]
+        };
+      }
+      const pageData = {
+        parent: {
+          page_id: parentId
+        },
+        properties: pageProperties
+      };
+      const createParams = {
+        url: "https://api.notion.com/v1/pages",
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.notionClient.getToken()}`,
+          "Notion-Version": "2022-06-28",
+          "Content-Type": "application/json"
+        },
+        contentType: "application/json",
+        body: JSON.stringify(pageData)
+      };
+      const createResponse = await (0, import_obsidian2.requestUrl)(createParams);
+      if (createResponse.status !== 200) {
+        throw new Error(`Falha ao criar p\xE1gina: ${createResponse.status}`);
+      }
+      const pageId = createResponse.json.id;
+      console.log(`P\xE1gina base criada com ID: ${pageId}`);
+      const blocks = await this.convertMarkdownToEnhancedBlocks(
+        markdownContent
+      );
+      const MAX_BLOCKS_PER_REQUEST = 40;
+      for (let i = 0; i < blocks.length; i += MAX_BLOCKS_PER_REQUEST) {
+        const blockBatch = blocks.slice(i, i + MAX_BLOCKS_PER_REQUEST);
+        try {
+          await this.appendBlocksWithRetry(pageId, blockBatch);
+          await new Promise((resolve) => setTimeout(resolve, 300));
+        } catch (appendError) {
+          console.error(
+            `Erro ao adicionar lote ${i / MAX_BLOCKS_PER_REQUEST + 1}:`,
+            appendError
+          );
+        }
+      }
+      return pageId;
+    } catch (error) {
+      console.error(`Erro ao criar p\xE1gina formatada ${title}:`, error);
+      throw error;
+    }
+  }
+  /**
+   * Converte markdown para blocos do Notion com melhor fidelidade
+   * Adicionar na classe NotionSyncService
+   */
+  async convertMarkdownToEnhancedBlocks(markdown) {
+    const processedMarkdown = markdown.replace(/\r\n/g, "\n").replace(/\t/g, "    ");
+    const blocks = [];
+    const lines = processedMarkdown.split("\n");
+    let i = 0;
+    while (i < lines.length) {
+      const line = lines[i];
+      if (line.startsWith("```")) {
+        const codeInfo = line.slice(3).trim();
+        const language = codeInfo || "plain text";
+        let codeContent = "";
+        i++;
+        while (i < lines.length && !lines[i].startsWith("```")) {
+          codeContent += lines[i] + "\n";
+          i++;
+        }
+        if (i < lines.length) {
+          i++;
+        }
+        blocks.push(this.createOptimizedCodeBlock(codeContent, language));
+        continue;
+      }
+      if (line.startsWith("# ")) {
+        blocks.push(this.createHeadingBlock(line.slice(2), 1));
+        i++;
+        continue;
+      }
+      if (line.startsWith("## ")) {
+        blocks.push(this.createHeadingBlock(line.slice(3), 2));
+        i++;
+        continue;
+      }
+      if (line.startsWith("### ")) {
+        blocks.push(this.createHeadingBlock(line.slice(4), 3));
+        i++;
+        continue;
+      }
+      if (/^\s*[-*+]\s/.test(line)) {
+        const match = /^\s*/.exec(line);
+        const indentLevel = match ? match[0].length : 0;
+        const itemContent = line.replace(/^\s*[-*+]\s/, "");
+        blocks.push(this.createBulletListBlock(itemContent));
+        i++;
+        continue;
+      }
+      if (/^\s*\d+\.\s/.test(line)) {
+        const itemContent = line.replace(/^\s*\d+\.\s/, "");
+        blocks.push(this.createNumberedListBlock(itemContent));
+        i++;
+        continue;
+      }
+      if (/^-{3,}$|^_{3,}$|^\*{3,}$/.test(line)) {
+        blocks.push({
+          object: "block",
+          type: "divider",
+          divider: {}
+        });
+        i++;
+        continue;
+      }
+      let paragraphContent = line;
+      i++;
+      while (i < lines.length && lines[i].trim() !== "" && !lines[i].startsWith("#") && !lines[i].startsWith("```") && !lines[i].match(/^\s*[-*+]\s/) && !lines[i].match(/^\s*\d+\.\s/)) {
+        paragraphContent += "\n" + lines[i];
+        i++;
+      }
+      if (paragraphContent.trim() !== "") {
+        blocks.push(this.createParagraphBlock(paragraphContent));
+      } else {
+        i++;
+      }
+    }
+    return blocks;
+  }
+  /**
+   * Cria um bloco de código otimizado para o Notion
+   * Adicionar na classe NotionSyncService
+   */
+  createOptimizedCodeBlock(content, language = "plain text") {
+    const supportedLanguages = [
+      "abap",
+      "arduino",
+      "bash",
+      "basic",
+      "c",
+      "clojure",
+      "coffeescript",
+      "cpp",
+      "csharp",
+      "css",
+      "dart",
+      "diff",
+      "docker",
+      "elixir",
+      "elm",
+      "erlang",
+      "flow",
+      "fortran",
+      "fsharp",
+      "gherkin",
+      "glsl",
+      "go",
+      "graphql",
+      "groovy",
+      "haskell",
+      "html",
+      "java",
+      "javascript",
+      "json",
+      "julia",
+      "kotlin",
+      "latex",
+      "less",
+      "lisp",
+      "livescript",
+      "lua",
+      "makefile",
+      "markdown",
+      "markup",
+      "matlab",
+      "mermaid",
+      "nix",
+      "objective-c",
+      "ocaml",
+      "pascal",
+      "perl",
+      "php",
+      "plain text",
+      "powershell",
+      "prolog",
+      "protobuf",
+      "python",
+      "r",
+      "reason",
+      "ruby",
+      "rust",
+      "sass",
+      "scala",
+      "scheme",
+      "scss",
+      "shell",
+      "sql",
+      "swift",
+      "typescript",
+      "vb.net",
+      "verilog",
+      "vhdl",
+      "visual basic",
+      "webassembly",
+      "xml",
+      "yaml"
+    ];
+    const normalizedLanguage = language.toLowerCase().trim();
+    const finalLanguage = supportedLanguages.includes(normalizedLanguage) ? normalizedLanguage : "plain text";
+    return {
+      object: "block",
+      type: "code",
+      code: {
+        rich_text: [
+          {
+            type: "text",
+            text: {
+              content: content.trim()
+            }
+          }
+        ],
+        language: finalLanguage
+      }
+    };
+  }
+  /**
+   * Método para adicionar blocos com retry
+   * Adicionar na classe NotionSyncService
+   */
+  async appendBlocksWithRetry(pageId, blocks) {
+    const MAX_RETRIES = 3;
+    let retryCount = 0;
+    while (retryCount < MAX_RETRIES) {
+      try {
+        const params = {
+          url: `https://api.notion.com/v1/blocks/${pageId}/children`,
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${this.notionClient.getToken()}`,
+            "Notion-Version": "2022-06-28",
+            "Content-Type": "application/json"
+          },
+          contentType: "application/json",
+          body: JSON.stringify({
+            children: blocks
+          })
+        };
+        const response = await (0, import_obsidian2.requestUrl)(params);
+        if (response.status === 200) {
+          console.log(`Blocos adicionados com sucesso \xE0 p\xE1gina ${pageId}`);
+          return;
+        } else {
+          throw new Error(`Erro ao adicionar blocos: ${response.status}`);
+        }
+      } catch (error) {
+        retryCount++;
+        console.error(`Tentativa ${retryCount} falhou: ${error.message}`);
+        if (retryCount >= MAX_RETRIES) {
+          throw error;
+        }
+        const delay = 500 * Math.pow(2, retryCount);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        if (blocks.length > 10) {
+          blocks = blocks.slice(0, blocks.length / 2);
+          console.log(
+            `Reduzindo para ${blocks.length} blocos na pr\xF3xima tentativa`
+          );
+        }
+      }
+    }
+  }
+  /**
+   * Verifica se uma página já existe no Notion por título dentro de um parent
+   * Adicionar na classe NotionSyncService
+   */
+  async doesPageExistByTitle(parentId, title) {
+    try {
+      console.log(
+        `Verificando se a p\xE1gina "${title}" j\xE1 existe em ${parentId}`
+      );
+      const params = {
+        url: `https://api.notion.com/v1/blocks/${parentId}/children?page_size=100`,
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${this.notionClient.getToken()}`,
+          "Notion-Version": "2022-06-28"
+        }
+      };
+      const response = await (0, import_obsidian2.requestUrl)(params);
+      if (response.status === 200) {
+        const pages = response.json.results.filter(
+          (block) => block.type === "child_page"
+        );
+        const normalizedTitle = title.toLowerCase().trim();
+        for (const page of pages) {
+          if (page.child_page && page.child_page.title && page.child_page.title.toLowerCase().trim() === normalizedTitle) {
+            console.log(`P\xE1gina "${title}" encontrada com ID: ${page.id}`);
+            return page.id;
+          }
+        }
+      }
+      console.log(`P\xE1gina "${title}" n\xE3o encontrada em ${parentId}`);
+      return null;
+    } catch (error) {
+      console.error(`Erro ao verificar exist\xEAncia da p\xE1gina ${title}:`, error);
+      return null;
+    }
+  }
+  /**
+   * Retorna o estado atual do rastreamento de arquivos
+   */
+  getFileTracking() {
+    return this.fileTracker.getAllTracking();
   }
   /**
    * Sincroniza arquivos do Obsidian com o Notion
+   * Substituir na classe NotionSyncService
    */
   async syncFilesToNotion(files, vault) {
+    console.log(`Iniciando sincroniza\xE7\xE3o de ${files.length} arquivos...`);
     const isConnected = await this.notionClient.testConnection();
     if (!isConnected) {
       throw new Error(
         "Falha na conex\xE3o com a API do Notion. Verifique seu token."
       );
     }
-    await this.ensureFolderStructure(files);
-    for (const file of files) {
+    console.log("Conex\xE3o com a API do Notion estabelecida com sucesso.");
+    const existingPaths = files.map((file) => file.path);
+    this.fileTracker.cleanupDeletedFiles(existingPaths);
+    const sortedFiles = this.sortFilesByPath(files);
+    await this.ensureFolderStructure(sortedFiles);
+    console.log("Estrutura de pastas criada com sucesso");
+    console.log(`Processando ${files.length} arquivos...`);
+    let successCount = 0;
+    let skippedCount = 0;
+    let errorCount = 0;
+    let existingCount = 0;
+    for (const file of sortedFiles) {
       try {
-        console.log(`Sincronizando arquivo: ${file.path}`);
+        if (!file.path.endsWith(".md")) {
+          console.log(`Ignorando arquivo n\xE3o-Markdown: ${file.path}`);
+          continue;
+        }
+        const parentId = this.getParentPageId(file.parent) || this.rootPageId;
+        const existingPageId = await this.doesPageExistByTitle(
+          parentId,
+          file.name
+        );
+        if (existingPageId && !this.pageCache[file.path]) {
+          console.log(
+            `P\xE1gina "${file.name}" j\xE1 existe no Notion. Adicionando ao cache.`
+          );
+          this.pageCache[file.path] = existingPageId;
+          existingCount++;
+          continue;
+        }
+        if (this.pageCache[file.path]) {
+          const hasChanged = await this.fileTracker.hasFileChanged(
+            file.file,
+            vault
+          );
+          if (!hasChanged) {
+            console.log(
+              `Arquivo n\xE3o modificado desde a \xFAltima sincroniza\xE7\xE3o: ${file.path}`
+            );
+            skippedCount++;
+            continue;
+          }
+          const pageExists = await this.doesNotionPageExist(
+            this.pageCache[file.path]
+          );
+          if (!pageExists) {
+            console.log(
+              `P\xE1gina para ${file.path} foi exclu\xEDda no Notion. Ser\xE1 recriada.`
+            );
+            delete this.pageCache[file.path];
+          }
+        }
+        console.log(`==== Sincronizando arquivo: ${file.path} ====`);
         const content = await vault.read(file.file);
         const { metadata, content: processedContent } = processMarkdownFrontmatter(content);
-        const blocks = markdownToNotionBlocks(processedContent);
+        const contentWithProcessedLinks = await this.processLinksInContent(
+          processedContent,
+          files,
+          vault
+        );
         if (this.pageCache[file.path]) {
-          console.log(`Atualizando p\xE1gina existente para: ${file.path}`);
-          await this.updateNotionPage(
-            this.pageCache[file.path],
-            file.name,
-            blocks
+          await this.clearAllBlocks(this.pageCache[file.path]);
+          const blocks = await this.convertMarkdownToEnhancedBlocks(
+            contentWithProcessedLinks
           );
-        } else {
-          console.log(`Criando nova p\xE1gina para: ${file.path}`);
-          const parentId = this.getParentPageId(file.parent);
-          if (!parentId) {
-            console.warn(`Pai n\xE3o encontrado para ${file.path}, usando raiz`);
+          const MAX_BLOCKS_PER_REQUEST = 40;
+          for (let i = 0; i < blocks.length; i += MAX_BLOCKS_PER_REQUEST) {
+            const blockBatch = blocks.slice(i, i + MAX_BLOCKS_PER_REQUEST);
+            await this.appendBlocksWithRetry(
+              this.pageCache[file.path],
+              blockBatch
+            );
+            await new Promise((resolve) => setTimeout(resolve, 300));
           }
-          const pageParentId = parentId || this.rootPageId;
-          console.log(`Criando na p\xE1gina pai: ${pageParentId}`);
-          const notionPageId = await this.createNotionPage(
-            pageParentId,
+          console.log(`P\xE1gina ${file.path} atualizada com sucesso`);
+        } else {
+          const notionPageId = await this.createFormattedNotionPage(
+            parentId,
             file.name,
-            blocks,
+            contentWithProcessedLinks,
             metadata
           );
           this.pageCache[file.path] = notionPageId;
           console.log(`P\xE1gina criada com ID: ${notionPageId}`);
         }
+        await this.fileTracker.updateFileTracking(file.file, vault);
+        successCount++;
+        console.log(`==== Arquivo sincronizado com sucesso: ${file.path} ====`);
       } catch (error) {
+        errorCount++;
         console.error(`Erro ao sincronizar arquivo ${file.path}:`, error);
       }
     }
+    console.log(
+      `Sincroniza\xE7\xE3o conclu\xEDda! Arquivos: ${successCount} sincronizados, ${existingCount} existentes, ${skippedCount} ignorados (sem altera\xE7\xF5es), ${errorCount} erros`
+    );
+  }
+  /**
+  * Verifica se a página do Notion existe
+  * Adicionar na classe NotionSyncService
+  */
+  async doesNotionPageExist(pageId) {
+    try {
+      console.log(`Verificando se a p\xE1gina ${pageId} existe no Notion...`);
+      const params = {
+        url: `https://api.notion.com/v1/pages/${pageId}`,
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${this.notionClient.getToken()}`,
+          "Notion-Version": "2022-06-28"
+        }
+      };
+      const response = await (0, import_obsidian2.requestUrl)(params);
+      return response.status === 200;
+    } catch (error) {
+      if (error.status === 404) {
+        console.log(`P\xE1gina ${pageId} n\xE3o existe mais no Notion`);
+        return false;
+      }
+      console.error(`Erro ao verificar exist\xEAncia da p\xE1gina ${pageId}:`, error);
+      return true;
+    }
+  }
+  /**
+  * Cria um bloco de parágrafo
+  * Adicionar na classe NotionSyncService
+  */
+  createParagraphBlock(content) {
+    return {
+      object: "block",
+      type: "paragraph",
+      paragraph: {
+        rich_text: [
+          {
+            type: "text",
+            text: {
+              content
+            }
+          }
+        ]
+      }
+    };
+  }
+  /**
+   * Cria um bloco de cabeçalho
+   * Adicionar na classe NotionSyncService
+   */
+  createHeadingBlock(content, level) {
+    const headingType = `heading_${level}`;
+    return {
+      object: "block",
+      type: headingType,
+      [headingType]: {
+        rich_text: [
+          {
+            type: "text",
+            text: {
+              content
+            }
+          }
+        ]
+      }
+    };
+  }
+  /**
+   * Cria um item de lista não ordenada
+   * Adicionar na classe NotionSyncService
+   */
+  createBulletListBlock(content) {
+    return {
+      object: "block",
+      type: "bulleted_list_item",
+      bulleted_list_item: {
+        rich_text: [
+          {
+            type: "text",
+            text: {
+              content
+            }
+          }
+        ]
+      }
+    };
+  }
+  /**
+   * Cria um item de lista ordenada
+   * Adicionar na classe NotionSyncService
+   */
+  createNumberedListBlock(content) {
+    return {
+      object: "block",
+      type: "numbered_list_item",
+      numbered_list_item: {
+        rich_text: [
+          {
+            type: "text",
+            text: {
+              content
+            }
+          }
+        ]
+      }
+    };
   }
   /**
    * Garante que a estrutura de pastas exista no Notion
@@ -558,43 +1390,80 @@ var NotionSyncService = class {
         }
       }
     }
-    const sortedFolders = Array.from(folders).sort(
-      (a, b) => (a.match(/\//g) || []).length - (b.match(/\//g) || []).length
-    );
+    const sortedFolders = Array.from(folders).sort((a, b) => {
+      return a.localeCompare(b, void 0, {
+        numeric: true,
+        sensitivity: "base"
+      });
+    });
+    console.log(`Processando ${sortedFolders.length} pastas...`);
     for (const folderPath of sortedFolders) {
       try {
         const parts = folderPath.split("/");
         const folderName = parts[parts.length - 1];
         if (parts.length === 1) {
           if (!this.pageCache[folderPath]) {
-            console.log(`Criando pasta de primeiro n\xEDvel: ${folderName}`);
-            const notionPageId = await this.notionClient.createFolderPage(
+            const existingFolderId = await this.doesFolderExistInNotion(
               this.rootPageId,
               folderName
             );
-            this.pageCache[folderPath] = notionPageId;
+            if (existingFolderId) {
+              console.log(
+                `Usando pasta existente de primeiro n\xEDvel: ${folderName} (${existingFolderId})`
+              );
+              this.pageCache[folderPath] = existingFolderId;
+            } else {
+              console.log(`Criando pasta de primeiro n\xEDvel: ${folderName}`);
+              const notionPageId = await this.notionClient.createFolderPage(
+                this.rootPageId,
+                folderName
+              );
+              this.pageCache[folderPath] = notionPageId;
+            }
           }
         } else {
           const parentPath = parts.slice(0, -1).join("/");
           const parentId = this.pageCache[parentPath];
           if (parentId) {
             if (!this.pageCache[folderPath]) {
-              console.log(`Criando subpasta: ${folderName} em ${parentPath}`);
-              const notionPageId = await this.notionClient.createFolderPage(
+              const existingFolderId = await this.doesFolderExistInNotion(
                 parentId,
                 folderName
               );
-              this.pageCache[folderPath] = notionPageId;
+              if (existingFolderId) {
+                console.log(
+                  `Usando subpasta existente: ${folderName} em ${parentPath} (${existingFolderId})`
+                );
+                this.pageCache[folderPath] = existingFolderId;
+              } else {
+                console.log(`Criando subpasta: ${folderName} em ${parentPath}`);
+                const notionPageId = await this.notionClient.createFolderPage(
+                  parentId,
+                  folderName
+                );
+                this.pageCache[folderPath] = notionPageId;
+              }
             }
           } else {
             console.warn(
               `Pasta pai n\xE3o encontrada para ${folderPath}, usando raiz`
             );
-            const notionPageId = await this.notionClient.createFolderPage(
+            const existingFolderId = await this.doesFolderExistInNotion(
               this.rootPageId,
               folderName
             );
-            this.pageCache[folderPath] = notionPageId;
+            if (existingFolderId) {
+              console.log(
+                `Usando pasta existente na raiz: ${folderName} (${existingFolderId})`
+              );
+              this.pageCache[folderPath] = existingFolderId;
+            } else {
+              const notionPageId = await this.notionClient.createFolderPage(
+                this.rootPageId,
+                folderName
+              );
+              this.pageCache[folderPath] = notionPageId;
+            }
           }
         }
       } catch (error) {
@@ -603,11 +1472,239 @@ var NotionSyncService = class {
     }
   }
   /**
-   * Cria uma página de nota no Notion
+   * Verifica se uma pasta já existe no Notion
+   * Esta função deve ser adicionada ao arquivo notion-sync-service.ts
    */
-  async createNotionPage(parentId, title, blocks, metadata = {}) {
+  async doesFolderExistInNotion(parentId, folderName) {
+    var _a, _b;
+    try {
+      console.log(
+        `Verificando se a pasta "${folderName}" j\xE1 existe em ${parentId}`
+      );
+      const params = {
+        url: `https://api.notion.com/v1/blocks/${parentId}/children?page_size=100`,
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${this.notionClient.getToken()}`,
+          "Notion-Version": "2022-06-28"
+        }
+      };
+      const response = await (0, import_obsidian2.requestUrl)(params);
+      if (response.status === 200) {
+        const pages = response.json.results.filter(
+          (block) => block.type === "child_page"
+        );
+        for (const page of pages) {
+          if (((_a = page.child_page) == null ? void 0 : _a.title) === folderName || page.id && page.child_page && folderName.toLowerCase() === ((_b = page.child_page.title) == null ? void 0 : _b.toLowerCase())) {
+            console.log(`Pasta "${folderName}" encontrada com ID: ${page.id}`);
+            return page.id;
+          }
+        }
+      }
+      console.log(`Pasta "${folderName}" n\xE3o encontrada em ${parentId}`);
+      return null;
+    } catch (error) {
+      console.error(
+        `Erro ao verificar exist\xEAncia da pasta ${folderName}:`,
+        error
+      );
+      return null;
+    }
+  }
+  /**
+   * Ordena os arquivos por caminho para garantir ordem alfanumérica correta
+   */
+  sortFilesByPath(files) {
+    return [...files].sort((a, b) => {
+      if (a.parent !== b.parent) {
+        return a.parent.localeCompare(b.parent, void 0, {
+          numeric: true,
+          sensitivity: "base"
+        });
+      }
+      return a.name.localeCompare(b.name, void 0, {
+        numeric: true,
+        sensitivity: "base"
+      });
+    });
+  }
+  /**
+   * Processa links do Obsidian no conteúdo
+   * Converte [[arquivo]] ou [[arquivo|texto]] para links internos do Notion
+   */
+  async processLinksInContent(content, files, vault) {
+    const linkRegex = /\[\[(.*?)(?:\|(.*?))?\]\]/g;
+    let processedContent = content;
+    let match;
+    const linkMap = /* @__PURE__ */ new Map();
+    for (const file of files) {
+      if (file.path.endsWith(".md")) {
+        const baseName = file.path.substring(0, file.path.length - 3);
+        linkMap.set(file.name, file.path);
+        linkMap.set(baseName, file.path);
+      }
+    }
+    while ((match = linkRegex.exec(content)) !== null) {
+      const fullMatch = match[0];
+      const linkTarget = match[1];
+      const linkText = match[2] || linkTarget;
+      const targetPath = linkMap.get(linkTarget);
+      if (targetPath && this.pageCache[targetPath]) {
+        const notionPageId = this.pageCache[targetPath];
+        console.log(`Convertendo link para ${linkTarget} -> ${notionPageId}`);
+        const notionLink = `[${linkText}](https://www.notion.so/${notionPageId.replace(
+          /-/g,
+          ""
+        )})`;
+        processedContent = processedContent.replace(fullMatch, notionLink);
+      } else {
+        processedContent = processedContent.replace(fullMatch, linkText);
+      }
+    }
+    return processedContent;
+  }
+  /**
+   * Cria uma página no Notion usando abordagem robusta para conteúdo complexo
+   */
+  async createNotionPageRobust(parentId, title, content, metadata = {}) {
     try {
       console.log(`Criando p\xE1gina "${title}" no parent ${parentId}`);
+      const enhancedBlocks = enhancedMarkdownToNotionBlocks(content);
+      const blockChunks = splitIntoManageableBlocks(enhancedBlocks);
+      const properties = {
+        title: {
+          title: [
+            {
+              text: {
+                content: title
+              }
+            }
+          ]
+        }
+      };
+      for (const [key, value] of Object.entries(metadata)) {
+        if (!key.trim())
+          continue;
+        properties[key] = {
+          rich_text: [
+            {
+              type: "text",
+              text: {
+                content: String(value).substring(0, 1900)
+                // Limite de tamanho
+              }
+            }
+          ]
+        };
+      }
+      const initialBlocks = blockChunks.length > 0 ? blockChunks[0] : [];
+      const data = {
+        parent: {
+          page_id: parentId
+        },
+        properties,
+        children: initialBlocks
+      };
+      try {
+        const params = {
+          url: "https://api.notion.com/v1/pages",
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${this.notionClient.getToken()}`,
+            "Notion-Version": "2022-06-28",
+            "Content-Type": "application/json"
+          },
+          contentType: "application/json",
+          body: JSON.stringify(data)
+        };
+        console.log(`Enviando requisi\xE7\xE3o para criar p\xE1gina: ${title}`);
+        const response = await (0, import_obsidian2.requestUrl)(params);
+        if (response.status === 200) {
+          const pageId = response.json.id;
+          console.log(`P\xE1gina criada com sucesso. ID: ${pageId}`);
+          if (blockChunks.length > 1) {
+            for (let i = 1; i < blockChunks.length; i++) {
+              await this.appendBlocksSafely(pageId, blockChunks[i]);
+              await new Promise((resolve) => setTimeout(resolve, 300));
+            }
+          }
+          return pageId;
+        } else {
+          throw new Error(`Resposta inesperada: ${response.status}`);
+        }
+      } catch (error) {
+        console.error(`Erro na cria\xE7\xE3o completa: ${error.message}`);
+        throw error;
+      }
+    } catch (error) {
+      console.error(`Erro criando p\xE1gina ${title}: ${error.message}`);
+      try {
+        console.log(`Tentando criar p\xE1gina ${title} com conte\xFAdo m\xEDnimo`);
+        const minimalData = {
+          parent: {
+            page_id: parentId
+          },
+          properties: {
+            title: {
+              title: [
+                {
+                  text: {
+                    content: title
+                  }
+                }
+              ]
+            }
+          },
+          children: [
+            {
+              object: "block",
+              type: "paragraph",
+              paragraph: {
+                rich_text: [
+                  {
+                    type: "text",
+                    text: {
+                      content: "Este conte\xFAdo foi simplificado devido \xE0 complexidade do original."
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        };
+        const params = {
+          url: "https://api.notion.com/v1/pages",
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${this.notionClient.getToken()}`,
+            "Notion-Version": "2022-06-28",
+            "Content-Type": "application/json"
+          },
+          contentType: "application/json",
+          body: JSON.stringify(minimalData)
+        };
+        const response = await (0, import_obsidian2.requestUrl)(params);
+        if (response.status === 200) {
+          const pageId = response.json.id;
+          console.log(`P\xE1gina criada com conte\xFAdo m\xEDnimo. ID: ${pageId}`);
+          return pageId;
+        } else {
+          throw new Error(`Falha no fallback: ${response.status}`);
+        }
+      } catch (finalError) {
+        console.error(`Erro final: ${finalError.message}`);
+        throw finalError;
+      }
+    }
+  }
+  /**
+   * Método existente de criação de página com requestUrl
+   */
+  async createNotionPageWithRequestUrl(parentId, title, blocks, metadata = {}) {
+    try {
+      console.log(
+        `Criando p\xE1gina "${title}" no parent ${parentId} (via requestUrl)`
+      );
       const properties = {
         title: {
           title: [
@@ -633,15 +1730,314 @@ var NotionSyncService = class {
           ]
         };
       }
-      const pageId = await this.notionClient.createPage(
-        parentId,
-        title,
-        blocks
-      );
-      return pageId;
+      const MAX_BLOCKS_PER_REQUEST = 50;
+      const chunkedBlocks = [];
+      for (let i = 0; i < blocks.length; i += MAX_BLOCKS_PER_REQUEST) {
+        chunkedBlocks.push(blocks.slice(i, i + MAX_BLOCKS_PER_REQUEST));
+      }
+      const initialBlocks = chunkedBlocks.length > 0 ? chunkedBlocks[0] : [];
+      const sanitizedBlocks = initialBlocks.map((block) => {
+        var _a, _b, _c, _d;
+        if (block.type === "code" && ((_d = (_c = (_b = (_a = block.code) == null ? void 0 : _a.rich_text) == null ? void 0 : _b[0]) == null ? void 0 : _c.text) == null ? void 0 : _d.content)) {
+          const content = block.code.rich_text[0].text.content;
+          if (content.length > 2e3) {
+            block.code.rich_text[0].text.content = content.substring(0, 2e3) + "\n\n... (conte\xFAdo truncado devido a limita\xE7\xF5es da API)";
+          }
+        }
+        return block;
+      });
+      const data = {
+        parent: {
+          page_id: parentId
+        },
+        properties,
+        children: sanitizedBlocks
+      };
+      const params = {
+        url: "https://api.notion.com/v1/pages",
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.notionClient.getToken()}`,
+          "Notion-Version": "2022-06-28",
+          "Content-Type": "application/json"
+        },
+        contentType: "application/json",
+        body: JSON.stringify(data)
+      };
+      console.log(`Enviando requisi\xE7\xE3o para criar p\xE1gina: ${title}`);
+      const response = await (0, import_obsidian2.requestUrl)(params);
+      if (response.status !== 200) {
+        console.error(
+          `Erro ao criar p\xE1gina (status ${response.status}):`,
+          response.text
+        );
+        console.log("Tentando criar p\xE1gina sem blocos de conte\xFAdo...");
+        const simplifiedData = {
+          parent: {
+            page_id: parentId
+          },
+          properties,
+          children: [
+            {
+              object: "block",
+              type: "paragraph",
+              paragraph: {
+                rich_text: [
+                  {
+                    type: "text",
+                    text: {
+                      content: "Conte\xFAdo n\xE3o foi poss\xEDvel sincronizar devido a limita\xE7\xF5es da API."
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        };
+        const simplifiedParams = {
+          ...params,
+          body: JSON.stringify(simplifiedData)
+        };
+        const fallbackResponse = await (0, import_obsidian2.requestUrl)(simplifiedParams);
+        if (fallbackResponse.status !== 200) {
+          throw new Error(
+            `Falha ao criar p\xE1gina simplificada: ${fallbackResponse.status}`
+          );
+        }
+        const responseJson2 = fallbackResponse.json;
+        console.log(
+          `P\xE1gina criada com conte\xFAdo limitado. ID: ${responseJson2.id}`
+        );
+        if (chunkedBlocks.length > 1) {
+          try {
+            for (let i = 1; i < chunkedBlocks.length; i++) {
+              await this.appendBlocksToPage(responseJson2.id, chunkedBlocks[i]);
+            }
+          } catch (appendError) {
+            console.error(
+              "N\xE3o foi poss\xEDvel adicionar todos os blocos:",
+              appendError
+            );
+          }
+        }
+        return responseJson2.id;
+      }
+      const responseJson = response.json;
+      console.log(`P\xE1gina criada com sucesso. ID: ${responseJson.id}`);
+      if (chunkedBlocks.length > 1) {
+        try {
+          for (let i = 1; i < chunkedBlocks.length; i++) {
+            await this.appendBlocksToPage(responseJson.id, chunkedBlocks[i]);
+          }
+        } catch (appendError) {
+          console.error(
+            "N\xE3o foi poss\xEDvel adicionar todos os blocos:",
+            appendError
+          );
+        }
+      }
+      return responseJson.id;
     } catch (error) {
       console.error(`Erro ao criar p\xE1gina ${title} em ${parentId}:`, error);
+      try {
+        console.log("Tentativa final: criando p\xE1gina com conte\xFAdo m\xEDnimo");
+        const minimalData = {
+          parent: {
+            page_id: parentId
+          },
+          properties: {
+            title: {
+              title: [
+                {
+                  text: {
+                    content: title
+                  }
+                }
+              ]
+            }
+          }
+        };
+        const minimalParams = {
+          url: "https://api.notion.com/v1/pages",
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${this.notionClient.getToken()}`,
+            "Notion-Version": "2022-06-28",
+            "Content-Type": "application/json"
+          },
+          contentType: "application/json",
+          body: JSON.stringify(minimalData)
+        };
+        const lastResortResponse = await (0, import_obsidian2.requestUrl)(minimalParams);
+        if (lastResortResponse.status === 200) {
+          const responseJson = lastResortResponse.json;
+          console.log(
+            `P\xE1gina criada com conte\xFAdo m\xEDnimo. ID: ${responseJson.id}`
+          );
+          return responseJson.id;
+        }
+      } catch (finalError) {
+        console.error("Falha na tentativa final:", finalError);
+      }
       throw error;
+    }
+  }
+  /**
+   * Adiciona blocos a uma página existente de forma segura
+   */
+  async appendBlocksSafely(pageId, blocks) {
+    const MAX_RETRIES = 3;
+    let retryCount = 0;
+    while (retryCount < MAX_RETRIES) {
+      try {
+        const sanitizedBlocks = sanitizeBlocks(blocks);
+        const params = {
+          url: `https://api.notion.com/v1/blocks/${pageId}/children`,
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${this.notionClient.getToken()}`,
+            "Notion-Version": "2022-06-28",
+            "Content-Type": "application/json"
+          },
+          contentType: "application/json",
+          body: JSON.stringify({
+            children: sanitizedBlocks
+          })
+        };
+        const response = await (0, import_obsidian2.requestUrl)(params);
+        if (response.status === 200) {
+          console.log(`Blocos adicionados com sucesso \xE0 p\xE1gina ${pageId}`);
+          return;
+        } else {
+          throw new Error(`Erro ao adicionar blocos: ${response.status}`);
+        }
+      } catch (error) {
+        retryCount++;
+        console.error(`Tentativa ${retryCount} falhou: ${error.message}`);
+        if (retryCount >= MAX_RETRIES) {
+          console.error(`Excedidas ${MAX_RETRIES} tentativas. Desistindo.`);
+          throw error;
+        }
+        await new Promise(
+          (resolve) => setTimeout(resolve, 500 * Math.pow(2, retryCount))
+        );
+        if (blocks.length > 5) {
+          console.log(
+            `Reduzindo n\xFAmero de blocos de ${blocks.length} para ${Math.floor(
+              blocks.length / 2
+            )}`
+          );
+          blocks = blocks.slice(0, Math.floor(blocks.length / 2));
+        }
+      }
+    }
+  }
+  /**
+   * Adiciona blocos a uma página existente
+   */
+  async appendBlocksToPage(pageId, blocks) {
+    try {
+      console.log(`Adicionando ${blocks.length} blocos \xE0 p\xE1gina ${pageId}`);
+      const sanitizedBlocks = blocks.map((block) => {
+        var _a, _b, _c, _d;
+        if (block.type === "code" && ((_d = (_c = (_b = (_a = block.code) == null ? void 0 : _a.rich_text) == null ? void 0 : _b[0]) == null ? void 0 : _c.text) == null ? void 0 : _d.content)) {
+          const content = block.code.rich_text[0].text.content;
+          if (content.length > 2e3) {
+            block.code.rich_text[0].text.content = content.substring(0, 2e3) + "\n\n... (conte\xFAdo truncado devido a limita\xE7\xF5es da API)";
+          }
+        }
+        return block;
+      });
+      const appendParams = {
+        url: `https://api.notion.com/v1/blocks/${pageId}/children`,
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${this.notionClient.getToken()}`,
+          "Notion-Version": "2022-06-28",
+          "Content-Type": "application/json"
+        },
+        contentType: "application/json",
+        body: JSON.stringify({
+          children: sanitizedBlocks
+        })
+      };
+      const response = await (0, import_obsidian2.requestUrl)(appendParams);
+      if (response.status !== 200) {
+        console.error(
+          `Erro ao adicionar blocos (status ${response.status}):`,
+          response.text
+        );
+        throw new Error(`Falha ao adicionar blocos: ${response.status}`);
+      }
+      console.log(`Blocos adicionados com sucesso \xE0 p\xE1gina ${pageId}`);
+    } catch (error) {
+      console.error(`Erro ao adicionar blocos \xE0 p\xE1gina ${pageId}:`, error);
+      throw error;
+    }
+  }
+  /**
+   * Método atualizado para atualizar páginas existentes de forma robusta
+   */
+  async updateNotionPageRobust(pageId, title, content, metadata = {}) {
+    try {
+      console.log(`Atualizando p\xE1gina: ${pageId} com t\xEDtulo: ${title}`);
+      const updateParams = {
+        url: `https://api.notion.com/v1/pages/${pageId}`,
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${this.notionClient.getToken()}`,
+          "Notion-Version": "2022-06-28",
+          "Content-Type": "application/json"
+        },
+        contentType: "application/json",
+        body: JSON.stringify({
+          properties: {
+            title: {
+              title: [
+                {
+                  text: {
+                    content: title
+                  }
+                }
+              ]
+            }
+          }
+        })
+      };
+      await (0, import_obsidian2.requestUrl)(updateParams);
+      console.log(`T\xEDtulo da p\xE1gina atualizado para: ${title}`);
+      await this.clearAllBlocks(pageId);
+      const enhancedBlocks = enhancedMarkdownToNotionBlocks(content);
+      const blockChunks = splitIntoManageableBlocks(enhancedBlocks);
+      for (let i = 0; i < blockChunks.length; i++) {
+        await this.appendBlocksSafely(pageId, blockChunks[i]);
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
+      console.log(`P\xE1gina ${pageId} atualizada com sucesso`);
+    } catch (error) {
+      console.error(`Erro ao atualizar p\xE1gina ${pageId}:`, error);
+      try {
+        console.log("Tentando atualizar apenas com conte\xFAdo b\xE1sico...");
+        const basicBlock = {
+          object: "block",
+          type: "paragraph",
+          paragraph: {
+            rich_text: [
+              {
+                type: "text",
+                text: {
+                  content: "Este conte\xFAdo foi simplificado devido \xE0 complexidade do original."
+                }
+              }
+            ]
+          }
+        };
+        await this.appendBlocksSafely(pageId, [basicBlock]);
+        console.log("P\xE1gina atualizada com conte\xFAdo simplificado");
+      } catch (fallbackError) {
+        console.error("Falha completa ao atualizar p\xE1gina:", fallbackError);
+        throw error;
+      }
     }
   }
   /**
@@ -650,26 +2046,47 @@ var NotionSyncService = class {
   async updateNotionPage(pageId, title, blocks) {
     try {
       console.log(`Atualizando p\xE1gina: ${pageId} com t\xEDtulo: ${title}`);
-      const client = this.notionClient.getClient();
-      await client.pages.update({
-        page_id: pageId,
-        properties: {
-          title: {
-            title: [
-              {
-                text: {
-                  content: title
+      const updateParams = {
+        url: `https://api.notion.com/v1/pages/${pageId}`,
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${this.notionClient.getToken()}`,
+          "Notion-Version": "2022-06-28",
+          "Content-Type": "application/json"
+        },
+        contentType: "application/json",
+        body: JSON.stringify({
+          properties: {
+            title: {
+              title: [
+                {
+                  text: {
+                    content: title
+                  }
                 }
-              }
-            ]
+              ]
+            }
           }
-        }
-      });
+        })
+      };
+      await (0, import_obsidian2.requestUrl)(updateParams);
+      console.log(`T\xEDtulo da p\xE1gina atualizado para: ${title}`);
       await this.clearAllBlocks(pageId);
-      await client.blocks.children.append({
-        block_id: pageId,
-        children: blocks
-      });
+      const appendParams = {
+        url: `https://api.notion.com/v1/blocks/${pageId}/children`,
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${this.notionClient.getToken()}`,
+          "Notion-Version": "2022-06-28",
+          "Content-Type": "application/json"
+        },
+        contentType: "application/json",
+        body: JSON.stringify({
+          children: blocks
+        })
+      };
+      await (0, import_obsidian2.requestUrl)(appendParams);
+      console.log(`Novos blocos adicionados \xE0 p\xE1gina ${pageId}`);
       console.log(`P\xE1gina ${pageId} atualizada com sucesso`);
     } catch (error) {
       console.error(`Erro ao atualizar p\xE1gina ${pageId}:`, error);
@@ -682,15 +2099,27 @@ var NotionSyncService = class {
   async clearAllBlocks(pageId) {
     try {
       console.log(`Limpando blocos da p\xE1gina ${pageId}`);
-      const client = this.notionClient.getClient();
-      const response = await client.blocks.children.list({
-        block_id: pageId
-      });
-      console.log(`Encontrados ${response.results.length} blocos para remover`);
-      for (const block of response.results) {
-        await client.blocks.delete({
-          block_id: block.id
-        });
+      const listParams = {
+        url: `https://api.notion.com/v1/blocks/${pageId}/children`,
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${this.notionClient.getToken()}`,
+          "Notion-Version": "2022-06-28"
+        }
+      };
+      const response = await (0, import_obsidian2.requestUrl)(listParams);
+      const blocks = response.json.results;
+      console.log(`Encontrados ${blocks.length} blocos para remover`);
+      for (const block of blocks) {
+        const deleteParams = {
+          url: `https://api.notion.com/v1/blocks/${block.id}`,
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${this.notionClient.getToken()}`,
+            "Notion-Version": "2022-06-28"
+          }
+        };
+        await (0, import_obsidian2.requestUrl)(deleteParams);
         await new Promise((resolve) => setTimeout(resolve, 100));
       }
       console.log(`Todos os blocos da p\xE1gina ${pageId} removidos com sucesso`);
@@ -742,12 +2171,15 @@ var DEFAULT_SETTINGS = {
   rootPageId: "",
   syncOnSave: false,
   excludeFolders: [],
-  lastSyncTimestamp: 0
+  lastSyncTimestamp: 0,
+  fileTracking: {},
+  pageMapping: {}
+  // Inicializar com um objeto vazio
 };
 
 // settings/settings-tab.ts
-var import_obsidian2 = require("obsidian");
-var SettingsTab = class extends import_obsidian2.PluginSettingTab {
+var import_obsidian3 = require("obsidian");
+var SettingsTab = class extends import_obsidian3.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
@@ -756,19 +2188,19 @@ var SettingsTab = class extends import_obsidian2.PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
     containerEl.createEl("h2", { text: "Notion Sync Settings" });
-    new import_obsidian2.Setting(containerEl).setName("Notion API Token").setDesc("Notion integration token. Get it at https://www.notion.so/my-integrations").addText((text) => text.setPlaceholder("Secret_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx").setValue(this.plugin.settings.notionToken).onChange(async (value) => {
+    new import_obsidian3.Setting(containerEl).setName("Notion API Token").setDesc("Notion integration token. Get it at https://www.notion.so/my-integrations").addText((text) => text.setPlaceholder("Secret_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx").setValue(this.plugin.settings.notionToken).onChange(async (value) => {
       this.plugin.settings.notionToken = value;
       await this.plugin.saveSettings();
     }));
-    new import_obsidian2.Setting(containerEl).setName("Root Page ID").setDesc("ID of the Notion page where structure will be synced (format: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx)").addText((text) => text.setPlaceholder("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx").setValue(this.plugin.settings.rootPageId).onChange(async (value) => {
+    new import_obsidian3.Setting(containerEl).setName("Root Page ID").setDesc("ID of the Notion page where structure will be synced (format: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx)").addText((text) => text.setPlaceholder("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx").setValue(this.plugin.settings.rootPageId).onChange(async (value) => {
       this.plugin.settings.rootPageId = value;
       await this.plugin.saveSettings();
     }));
-    new import_obsidian2.Setting(containerEl).setName("Sync on save").setDesc("Automatically sync notes with Notion when they are saved").addToggle((toggle) => toggle.setValue(this.plugin.settings.syncOnSave).onChange(async (value) => {
+    new import_obsidian3.Setting(containerEl).setName("Sync on save").setDesc("Automatically sync notes with Notion when they are saved").addToggle((toggle) => toggle.setValue(this.plugin.settings.syncOnSave).onChange(async (value) => {
       this.plugin.settings.syncOnSave = value;
       await this.plugin.saveSettings();
     }));
-    new import_obsidian2.Setting(containerEl).setName("Excluded folders").setDesc("List of folders to exclude from syncing (comma separated)").addText((text) => text.setPlaceholder("folder1, folder2/subfolder").setValue(this.plugin.settings.excludeFolders.join(", ")).onChange(async (value) => {
+    new import_obsidian3.Setting(containerEl).setName("Excluded folders").setDesc("List of folders to exclude from syncing (comma separated)").addText((text) => text.setPlaceholder("folder1, folder2/subfolder").setValue(this.plugin.settings.excludeFolders.join(", ")).onChange(async (value) => {
       this.plugin.settings.excludeFolders = value.split(",").map((folder) => folder.trim()).filter((folder) => folder);
       await this.plugin.saveSettings();
     }));
@@ -793,16 +2225,14 @@ var SettingsTab = class extends import_obsidian2.PluginSettingTab {
 // main.ts
 function normalizeNotionPageId(input) {
   if (input.includes("notion.so")) {
-    const match = input.match(
-      /([a-f0-9]{32})|([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i
-    );
+    const match = input.match(/([a-f0-9]{32})|([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/);
     if (match) {
       return match[0].replace(/-/g, "");
     }
   }
   return input.replace(/[^a-f0-9]/gi, "");
 }
-var NotionSyncPlugin = class extends import_obsidian3.Plugin {
+var NotionSyncPlugin = class extends import_obsidian4.Plugin {
   async onload() {
     console.log("\u{1F7E1} Plugin Notion Sync carregando...");
     await this.loadSettings();
@@ -822,13 +2252,13 @@ var NotionSyncPlugin = class extends import_obsidian3.Plugin {
       callback: async () => {
         console.log("\u{1F680} Comando 'Sync to Notion' iniciado...");
         if (!this.settings.notionToken || !this.settings.rootPageId) {
-          new import_obsidian3.Notice(
+          new import_obsidian4.Notice(
             "Please configure the Notion API token and Root Page ID in the plugin settings."
           );
           return;
         }
         try {
-          new import_obsidian3.Notice("Starting synchronization with Notion...");
+          new import_obsidian4.Notice("Starting synchronization with Notion...");
           const files = await scanVault(
             this.app.vault,
             this.settings.excludeFolders
@@ -838,10 +2268,10 @@ var NotionSyncPlugin = class extends import_obsidian3.Plugin {
           this.settings.lastSyncTimestamp = Date.now();
           await this.saveSettings();
           console.log("\u2705 Sincroniza\xE7\xE3o conclu\xEDda com sucesso.");
-          new import_obsidian3.Notice("Notion synchronization completed successfully!");
+          new import_obsidian4.Notice("Notion synchronization completed successfully!");
         } catch (error) {
           console.error("\u274C Erro durante sincroniza\xE7\xE3o:", error);
-          new import_obsidian3.Notice(`Sync error: ${error.message}`);
+          new import_obsidian4.Notice(`Sync error: ${error.message}`);
         }
       }
     });
@@ -850,7 +2280,7 @@ var NotionSyncPlugin = class extends import_obsidian3.Plugin {
       console.log("\u{1F501} Auto-sync ativado. Escutando modifica\xE7\xF5es...");
       this.registerEvent(
         this.app.vault.on("modify", async (file) => {
-          if (!(file instanceof import_obsidian3.TFile) || file.extension !== "md")
+          if (!(file instanceof import_obsidian4.TFile) || file.extension !== "md")
             return;
           if (!this.settings.syncOnSave)
             return;
@@ -875,12 +2305,9 @@ var NotionSyncPlugin = class extends import_obsidian3.Plugin {
               [vaultFile],
               this.app.vault
             );
-            new import_obsidian3.Notice(`File "${file.basename}" synced to Notion`);
+            new import_obsidian4.Notice(`File "${file.basename}" synced to Notion`);
           } catch (error) {
-            console.error(
-              `\u274C Erro ao sincronizar automaticamente ${file.path}:`,
-              error
-            );
+            console.error(`\u274C Erro ao sincronizar automaticamente ${file.path}:`, error);
           }
         })
       );
