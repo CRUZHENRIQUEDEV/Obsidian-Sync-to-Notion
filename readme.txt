@@ -1,5 +1,7 @@
-# Obsidian Notion Sync
+Aqui está a versão corrigida do seu arquivo README com a formatação correta:
 
+```markdown
+# Obsidian Notion Sync
 
 <a name="english"></a>
 # English
@@ -13,7 +15,6 @@ This plugin creates a bridge between your Obsidian vault and Notion workspace, a
 - 🔄 Auto-sync files on save or at timed intervals
 - 📝 Keep track of changes for efficient syncing
 - 🔁 Perform full resyncs when needed
-
 
 ## ⚙️ Installation
 
@@ -50,7 +51,6 @@ Before using the plugin, you need:
    - Paste your API token and root page ID
    - Configure other settings as needed
 
-
 ## 🚀 Usage
 
 ### Commands
@@ -78,9 +78,6 @@ The plugin adds these commands to Obsidian:
 4. It converts markdown to Notion blocks, preserving formatting and code blocks
 5. It updates existing pages or creates new ones as needed
 
-
-
-
 ## 🔜 Roadmap
 
 - Better support for embeds and transclusions
@@ -103,7 +100,6 @@ Este plugin cria uma ponte entre seu vault do Obsidian e seu workspace do Notion
 - 🔄 Sincronização automática ao salvar ou em intervalos definidos
 - 📝 Acompanhar alterações para sincronização eficiente
 - 🔁 Realizar ressincronizações completas quando necessário
-
 
 ## ⚙️ Instalação
 
@@ -139,8 +135,6 @@ Antes de usar o plugin, você precisa:
    - Vá para configurações de "Notion Sync"
    - Cole seu token de API e ID da página raiz
    - Configure outras opções conforme necessário
-
-
 
 ## 🚀 Uso
 
@@ -180,8 +174,6 @@ O plugin adiciona estes comandos ao Obsidian:
 
 </details>
 
-
-
 ## 🔜 Roadmap
 
 - Melhor suporte para embeds e transclusões
@@ -200,8 +192,9 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-
-
 <p align="center">
   Developed with ❤️ by <a href="https://github.com/CRUZHENRIQUEDEV">Henrique da Cruz Silva</a>
 </p>
+```
+
+Espero que isso ajude! Se precisar de mais alguma coisa, estou à disposição.
