@@ -1,11 +1,3 @@
-Aqui está a versão corrigida do seu arquivo README com a formatação correta:
-
-```markdown
-# Obsidian Notion Sync
-
-<a name="english"></a>
-# English
-
 ## 📚 Overview
 
 This plugin creates a bridge between your Obsidian vault and Notion workspace, allowing you to:
@@ -20,7 +12,7 @@ This plugin creates a bridge between your Obsidian vault and Notion workspace, a
 
 ### Manual Installation
 
-1. Download the latest release from the [releases page](https://github.com/CRUZHENRIQUEDEV/obsidian-notion-sync/releases)
+1. Download the latest release from the main.js and manifest.json
 2. Extract the zip file into your Obsidian vault's `.obsidian/plugins/` folder
 3. Enable the plugin in Obsidian's settings under "Community Plugins"
 
@@ -105,7 +97,7 @@ Este plugin cria uma ponte entre seu vault do Obsidian e seu workspace do Notion
 
 ### Instalação Manual
 
-1. Baixe a versão mais recente da [página de releases](https://github.com/CRUZHENRIQUEDEV/obsidian-notion-sync/releases)
+1. Baixe a versão mais recente da main.js e manifest.json
 2. Extraia o arquivo zip na pasta `.obsidian/plugins/` do seu vault
 3. Ative o plugin nas configurações do Obsidian em "Community Plugins"
 
@@ -165,14 +157,11 @@ O plugin adiciona estes comandos ao Obsidian:
 
 ## 🛠️ Soluções de Problemas
 
-<details>
-<summary><b>Problemas Comuns</b></summary>
 
 - **Falha na Autenticação**: Verifique se seu token do Notion está correto e ainda é válido
 - **Página Não Encontrada**: Certifique-se de que o ID da página raiz está correto e a página está compartilhada com sua integração
 - **Problemas de Formatação**: Alguns elementos markdown complexos podem não renderizar perfeitamente no Notion
 
-</details>
 
 ## 🔜 Roadmap
 
@@ -182,7 +171,6 @@ O plugin adiciona estes comandos ao Obsidian:
 - Diálogo de seleção para sincronização
 - Integração com bancos de dados do Notion
 
----
 
 ## 🧩 Contributing
 
@@ -192,9 +180,6 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-<p align="center">
-  Developed with ❤️ by <a href="https://github.com/CRUZHENRIQUEDEV">Henrique da Cruz Silva</a>
-</p>
-```
+
 
 Espero que isso ajude! Se precisar de mais alguma coisa, estou à disposição.
