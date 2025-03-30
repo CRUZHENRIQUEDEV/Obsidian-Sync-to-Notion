@@ -1,23 +1,7 @@
-/**
- * Sanitiza o conteúdo para garantir compatibilidade com a API do Notion
- * Remove ou substitui caracteres problemáticos
- */
-function sanitizeContent(content: string): string {
-  // Remove caracteres de controle invisíveis que podem causar problemas
-  let sanitized = content.replace(/[\u0000-\u001F\u007F-\u009F]/g, "");
+import { markdownToBlocks } from "@tryfabric/martian";
 
-  // Limita o tamanho de parágrafos muito longos
-  const MAX_PARAGRAPH_LENGTH = 1900;
-  const paragraphs = sanitized.split("\n\n");
-  const limitedParagraphs = paragraphs.map((p) => {
-    if (p.length > MAX_PARAGRAPH_LENGTH) {
-      return p.substring(0, MAX_PARAGRAPH_LENGTH) + "...";
-    }
-    return p;
-  });
 
-  return limitedParagraphs.join("\n\n");
-}
+
 
 /**
  * Divide um conteúdo grande em blocos menores para evitar limites da API
@@ -33,463 +17,77 @@ export function splitIntoManageableBlocks(blocks: any[]): any[][] {
   return chunks;
 }
 
-/**
- * Processa e sanitiza blocos complexos que podem causar problemas na API
- */
 export function sanitizeBlocks(blocks: any[]): any[] {
-  return blocks.map((block) => {
-    // Tratamento especial para blocos de código
-    if (block.type === "code" && block.code?.rich_text?.[0]?.text?.content) {
-      const content = block.code.rich_text[0].text.content;
-      // Limitar tamanho e sanitizar
-      if (content.length > 1900) {
-        block.code.rich_text[0].text.content =
-          content.substring(0, 1900) + "\n\n... (conteúdo truncado)";
-      }
+  return blocks
+    .map((block, index) => {
+      try {
+        // Verifica se o bloco é do tipo que pode conter texto longo
+        if (block.type === "paragraph" || block.type === "code") {
+          const richText = block[block.type]?.rich_text;
+          if (Array.isArray(richText)) {
+            const totalLength = richText.reduce(
+              (sum, rt) => sum + (rt.plain_text?.length || 0),
+              0
+            );
 
-      // Escape de caracteres problemáticos em blocos de código
-      block.code.rich_text[0].text.content =
-        block.code.rich_text[0].text.content
-          .replace(/\\/g, "\\\\") // Escape de backslashes
-          .replace(/\u0000-\u001F/g, ""); // Remove caracteres de controle
-    }
+            // Limite arbitrário de 2000 caracteres por bloco (ajustável)
+            if (totalLength > 2000) {
+              console.warn(
+                `Block #${index} (${block.type}) too long (${totalLength} chars). Splitting or ignoring.`
+              );
 
-    // Tratamento para blocos de texto comuns
-    if (
-      block.type === "paragraph" &&
-      block.paragraph?.rich_text?.[0]?.text?.content
-    ) {
-      const content = block.paragraph.rich_text[0].text.content;
-      if (content.length > 1900) {
-        block.paragraph.rich_text[0].text.content =
-          content.substring(0, 1900) + "...";
-      }
-    }
+              // Se quiser ignorar: return null;
+              // Aqui podemos fatiar os textos (exemplo abaixo fatiando para 2000 caracteres)
+              const splitText: string[] = [];
+              let buffer = "";
 
-    return block;
-  });
-}
+              for (const rt of richText) {
+                buffer += rt.plain_text;
+                while (buffer.length >= 2000) {
+                  splitText.push(buffer.slice(0, 2000));
+                  buffer = buffer.slice(2000);
+                }
+              }
+              if (buffer.length > 0) splitText.push(buffer);
 
-/**
- * Versão melhorada da função markdownToNotionBlocks que lida melhor com conteúdo complexo
- */
-export function enhancedMarkdownToNotionBlocks(markdownContent: string): any[] {
-  // Sanitizar o conteúdo Markdown
-  const sanitizedMarkdown = sanitizeContent(markdownContent);
-
-  // Converter para blocos do Notion
-  let rawBlocks = markdownToNotionBlocks(sanitizedMarkdown);
-
-  // Processar blocos de código grandes
-  rawBlocks = rawBlocks
-    .map((block) => {
-      if (
-        block.type === "code" &&
-        block.code?.rich_text?.[0]?.text?.content &&
-        block.code.rich_text[0].text.content.length > 1800
-      ) {
-        // Dividir o conteúdo em partes menores
-        const content = block.code.rich_text[0].text.content;
-        const language = block.code.language;
-        const parts = splitContentIntoChunks(content, 1800);
-
-        // Criar múltiplos blocos de código
-        return parts.map((part) => createCodeBlock(part, language));
-      }
-
-      return block;
-    })
-    .flat(); // Achatar o array para incluir todos os blocos de código divididos
-
-  // Sanitizar os blocos resultantes
-  return sanitizeBlocks(rawBlocks);
-}
-
-/**
- * Divide conteúdo em chunks menores, tentando quebrar em linhas para preservar formatação
- */
-function splitContentIntoChunks(content: string, maxSize: number): string[] {
-  const chunks = [];
-  let start = 0;
-
-  while (start < content.length) {
-    // Tentar terminar na quebra de linha para preservar a formatação
-    let end = start + maxSize;
-    if (end < content.length) {
-      const newlinePos = content.lastIndexOf("\n", end);
-      if (newlinePos > start) {
-        end = newlinePos;
-      }
-    } else {
-      end = content.length;
-    }
-
-    chunks.push(content.substring(start, end));
-    start = end + 1; // Pular a quebra de linha
-  }
-
-  return chunks;
-}
-
-/**
- * Versão melhorada da função markdownToNotionBlocks que lida melhor com conteúdo complexo
- */
-
-/**
- * Escapa caracteres especiais em blocos de código para evitar problemas na API do Notion
- * @param content Conteúdo do bloco de código
- */
-function escapeCodeContent(content: string): string {
-  // Escape characters that might cause issues in Notion API
-  return content
-    .replace(/\\/g, "\\\\") // Escape backslashes first
-    .replace(/"/g, '\\"') // Escape double quotes
-    .replace(/\n/g, "\\n") // Replace newlines with escaped newlines for JSON
-    .replace(/\r/g, "\\r") // Replace carriage returns
-    .replace(/\t/g, "\\t"); // Replace tabs
-}
-
-/**
- * Função auxiliar para criar um bloco de código corretamente
- */
-/**
- * Função auxiliar para criar um bloco de código corretamente
- */
-function createCodeBlock(content: string, language: string = ""): any {
-  // Remover os delimitadores de código ```
-  content = content.replace(/^```[\w-]*\n|```$/g, "");
-
-  // Escapar caracteres problemáticos
-  content = content
-    .replace(/\\/g, "\\\\") // Escapar backslashes primeiro
-    .replace(/"/g, '\\"') // Escapar aspas duplas
-    .replace(/\t/g, "  "); // Substituir tabs por espaços
-
-  // Verificar se a linguagem é suportada pelo Notion
-  const supportedLanguages = [
-    "abap",
-    "arduino",
-    "bash",
-    "basic",
-    "c",
-    "clojure",
-    "coffeescript",
-    "cpp",
-    "csharp",
-    "css",
-    "dart",
-    "diff",
-    "docker",
-    "elixir",
-    "elm",
-    "erlang",
-    "flow",
-    "fortran",
-    "fsharp",
-    "gherkin",
-    "glsl",
-    "go",
-    "graphql",
-    "groovy",
-    "haskell",
-    "html",
-    "java",
-    "javascript",
-    "json",
-    "julia",
-    "kotlin",
-    "latex",
-    "less",
-    "lisp",
-    "livescript",
-    "lua",
-    "makefile",
-    "markdown",
-    "markup",
-    "matlab",
-    "mermaid",
-    "nix",
-    "objective-c",
-    "ocaml",
-    "pascal",
-    "perl",
-    "php",
-    "plain text",
-    "powershell",
-    "prolog",
-    "protobuf",
-    "python",
-    "r",
-    "reason",
-    "ruby",
-    "rust",
-    "sass",
-    "scala",
-    "scheme",
-    "scss",
-    "shell",
-    "sql",
-    "swift",
-    "typescript",
-    "vb.net",
-    "verilog",
-    "vhdl",
-    "visual basic",
-    "webassembly",
-    "xml",
-    "yaml",
-  ];
-
-  const normalizedLanguage = language.toLowerCase().trim();
-  const finalLanguage = supportedLanguages.includes(normalizedLanguage)
-    ? normalizedLanguage
-    : "plain text";
-
-  return {
-    object: "block",
-    type: "code",
-    code: {
-      rich_text: [
-        {
-          type: "text",
-          text: {
-            content: content.trim(),
-          },
-        },
-      ],
-      language: finalLanguage,
-    },
-  };
-}
-
-/**
- * Converte Markdown para blocos do Notion com tratamento especial para código XAML
- */
-export function markdownToNotionBlocks(markdownContent: string): any[] {
-  const blocks: any[] = [];
-  const lines = markdownContent.split("\n");
-
-  let currentParagraph = "";
-  let inCodeBlock = false;
-  let codeContent = "";
-  let codeLanguage = "";
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-
-    // Process code blocks - this is a critical part for XAML and other problematic languages
-    if (line.startsWith("```")) {
-      if (!inCodeBlock) {
-        // Start of code block
-        inCodeBlock = true;
-
-        // Add accumulated paragraph if it exists
-        if (currentParagraph) {
-          blocks.push(createParagraphBlock(currentParagraph));
-          currentParagraph = "";
+              return splitText.map((text) => ({
+                type: block.type,
+                [block.type]: {
+                  rich_text: [
+                    {
+                      type: "text",
+                      text: { content: text },
+                    },
+                  ],
+                },
+              }));
+            }
+          }
         }
 
-        // Extract language
-        codeLanguage = line.substring(3).trim();
-        codeContent = "";
-      } else {
-        // End of code block
-        inCodeBlock = false;
-
-        // Create code block with special handling
-        blocks.push(createCodeBlock(codeContent, codeLanguage));
-        codeContent = "";
-        codeLanguage = "";
+        return block;
+      } catch (err) {
+        console.warn(`Error sanitizing block at index ${index}`, err);
+        return null;
       }
-      continue;
-    }
-
-    // If we're in a code block, accumulate content
-    if (inCodeBlock) {
-      codeContent += line + "\n";
-      continue;
-    }
-
-    // Process headings (h1, h2, h3)
-    if (line.startsWith("# ")) {
-      // Add accumulated paragraph if it exists
-      if (currentParagraph) {
-        blocks.push(createParagraphBlock(currentParagraph));
-        currentParagraph = "";
-      }
-
-      // Add heading block
-      blocks.push(createHeadingBlock(line.substring(2), 1));
-      continue;
-    }
-
-    if (line.startsWith("## ")) {
-      // Add accumulated paragraph if it exists
-      if (currentParagraph) {
-        blocks.push(createParagraphBlock(currentParagraph));
-        currentParagraph = "";
-      }
-
-      // Add h2 heading block
-      blocks.push(createHeadingBlock(line.substring(3), 2));
-      continue;
-    }
-
-    if (line.startsWith("### ")) {
-      // Add accumulated paragraph if it exists
-      if (currentParagraph) {
-        blocks.push(createParagraphBlock(currentParagraph));
-        currentParagraph = "";
-      }
-
-      // Add h3 heading block
-      blocks.push(createHeadingBlock(line.substring(4), 3));
-      continue;
-    }
-
-    // Process unordered lists
-    if (line.match(/^\s*[-*+]\s/)) {
-      // Add accumulated paragraph if it exists
-      if (currentParagraph) {
-        blocks.push(createParagraphBlock(currentParagraph));
-        currentParagraph = "";
-      }
-
-      // Extract list item content
-      const itemContent = line.replace(/^\s*[-*+]\s/, "");
-      blocks.push(createBulletListBlock(itemContent));
-      continue;
-    }
-
-    // Process numbered lists
-    if (line.match(/^\s*\d+\.\s/)) {
-      // Add accumulated paragraph if it exists
-      if (currentParagraph) {
-        blocks.push(createParagraphBlock(currentParagraph));
-        currentParagraph = "";
-      }
-
-      // Extract list item content
-      const itemContent = line.replace(/^\s*\d+\.\s/, "");
-      blocks.push(createNumberedListBlock(itemContent));
-      continue;
-    }
-
-    // Process blank lines
-    if (line.trim() === "") {
-      // Add accumulated paragraph if it exists
-      if (currentParagraph) {
-        blocks.push(createParagraphBlock(currentParagraph));
-        currentParagraph = "";
-      }
-      continue;
-    }
-
-    // For other content, accumulate as paragraphs
-    if (currentParagraph) {
-      currentParagraph += "\n" + line;
-    } else {
-      currentParagraph = line;
-    }
-  }
-
-  // Check if we're still in a code block (malformed markdown)
-  if (inCodeBlock && codeContent) {
-    blocks.push(createCodeBlock(codeContent, codeLanguage));
-  }
-
-  // Add the last paragraph if it exists
-  if (currentParagraph) {
-    blocks.push(createParagraphBlock(currentParagraph));
-  }
-
-  return blocks;
+    })
+    .flat() // para lidar com múltiplos blocos divididos
+    .filter(Boolean); // remove nulos
 }
+
 
 /**
- * Creates a paragraph block for the Notion API
+ * Converte Markdown para blocos do Notion usando @tryfabric/martian
  */
-function createParagraphBlock(content: string) {
-  return {
-    object: "block",
-    type: "paragraph",
-    paragraph: {
-      rich_text: [
-        {
-          type: "text",
-          text: {
-            content,
-          },
-        },
-      ],
-    },
-  };
+export function enhancedMarkdownToNotionBlocks(markdownContent: string): any[] {
+  const blocks = markdownToBlocks(markdownContent);
+
+  // Opcional: sanitizar se quiser truncar blocos grandes ou fazer logs
+  return sanitizeBlocks(blocks);
 }
 
-/**
- * Creates a heading block for the Notion API
- */
-function createHeadingBlock(content: string, level: 1 | 2 | 3) {
-  const headingType = `heading_${level}` as
-    | "heading_1"
-    | "heading_2"
-    | "heading_3";
 
-  return {
-    object: "block",
-    type: headingType,
-    [headingType]: {
-      rich_text: [
-        {
-          type: "text",
-          text: {
-            content,
-          },
-        },
-      ],
-    },
-  };
-}
 
-/**
- * Creates an unordered list item for the Notion API
- */
-function createBulletListBlock(content: string) {
-  return {
-    object: "block",
-    type: "bulleted_list_item",
-    bulleted_list_item: {
-      rich_text: [
-        {
-          type: "text",
-          text: {
-            content,
-          },
-        },
-      ],
-    },
-  };
-}
-
-/**
- * Creates a numbered list item for the Notion API
- */
-function createNumberedListBlock(content: string) {
-  return {
-    object: "block",
-    type: "numbered_list_item",
-    numbered_list_item: {
-      rich_text: [
-        {
-          type: "text",
-          text: {
-            content,
-          },
-        },
-      ],
-    },
-  };
-}
 
 /**
  * Processa links do formato Obsidian para formato compatível com Notion

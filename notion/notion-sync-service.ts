@@ -1,9 +1,7 @@
 import { Vault, requestUrl } from "obsidian";
 import NotionClient from "./notion-client";
 import {
-  markdownToNotionBlocks,
   processMarkdownFrontmatter,
-  processObsidianLinks,
   enhancedMarkdownToNotionBlocks,
   sanitizeBlocks,
   splitIntoManageableBlocks,
@@ -35,8 +33,461 @@ export default class NotionSyncService {
   }
 
   /**
-   * Método aprimorado para criar páginas no Notion com melhor formatação
+   * Sincroniza todos os arquivos, ignorando o histórico de sincronização anterior
    * Adicionar na classe NotionSyncService
+   */
+  async syncFilesToNotionFull(files: VaultFile[], vault: Vault): Promise<void> {
+    console.log(
+      `Iniciando sincronização completa de ${files.length} arquivos...`
+    );
+
+    // Testa a conexão com a API do Notion
+    const isConnected = await this.notionClient.testConnection();
+    if (!isConnected) {
+      throw new Error(
+        "Falha na conexão com a API do Notion. Verifique seu token."
+      );
+    }
+    console.log("Conexão com a API do Notion estabelecida com sucesso.");
+
+    // Limpa o cache de páginas
+    this.pageCache = {};
+
+    // Lista de caminhos de arquivos existentes para limpeza
+    const existingPaths = files.map((file) => file.path);
+    this.fileTracker.cleanupDeletedFiles(existingPaths);
+
+    try {
+      // Limpa todas as páginas da página raiz
+      console.log(`Limpando todas as páginas da raiz ${this.rootPageId}...`);
+      await this.clearAllPagesFromRoot();
+      console.log("Páginas existentes removidas com sucesso");
+
+      // Ordena as pastas para garantir que sejam criadas em ordem alfanumérica
+      const sortedFiles = this.sortFilesByPath(files);
+
+      // Recria a estrutura de pastas
+      await this.ensureFolderStructure(sortedFiles);
+      console.log("Estrutura de pastas recriada com sucesso");
+
+      // Sincroniza cada arquivo
+      console.log(`Processando ${files.length} arquivos...`);
+      let successCount = 0;
+      let errorCount = 0;
+
+      for (const file of sortedFiles) {
+        try {
+          // Pula arquivos que não são Markdown
+          if (!file.path.endsWith(".md")) {
+            console.log(`Ignorando arquivo não-Markdown: ${file.path}`);
+            continue;
+          }
+
+          console.log(`==== Sincronizando arquivo: ${file.path} ====`);
+
+          // Lê o conteúdo do arquivo
+          const content = await vault.read(file.file);
+
+          // Processa o conteúdo e extrai metadados
+          const { metadata, content: processedContent } =
+            processMarkdownFrontmatter(content);
+
+          // Processa links do Obsidian
+          const contentWithProcessedLinks = await this.processLinksInContent(
+            processedContent,
+            files,
+            vault
+          );
+
+          // Cria a página no Notion
+          const parentId = this.getParentPageId(file.parent);
+          if (!parentId) {
+            console.warn(`Pai não encontrado para ${file.path}, usando raiz`);
+          }
+
+          const pageParentId = parentId || this.rootPageId;
+          console.log(`Criando na página pai: ${pageParentId}`);
+
+          // Usar o método para criar páginas formatadas
+          const notionPageId = await this.createNotionPageRobust(
+            pageParentId,
+            file.name,
+            contentWithProcessedLinks,
+            metadata
+          );
+
+          // Armazena no cache
+          this.pageCache[file.path] = notionPageId;
+          console.log(`Página criada com ID: ${notionPageId}`);
+
+          // Atualiza o rastreamento do arquivo
+          await this.fileTracker.updateFileTracking(file.file, vault);
+
+          successCount++;
+          console.log(
+            `==== Arquivo sincronizado com sucesso: ${file.path} ====`
+          );
+        } catch (error) {
+          errorCount++;
+          console.error(`Erro ao sincronizar arquivo ${file.path}:`, error);
+          // Continua com o próximo arquivo
+        }
+      }
+
+      console.log(
+        `Sincronização completa concluída! Arquivos: ${successCount} sincronizados, ${errorCount} erros`
+      );
+    } catch (error) {
+      console.error("Erro durante a sincronização completa:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Limpa todas as páginas da raiz
+   * Adicionar na classe NotionSyncService
+   */
+  private async clearAllPagesFromRoot(): Promise<void> {
+    try {
+      console.log(`Obtendo páginas filhas de ${this.rootPageId}...`);
+
+      // Busca todas as páginas filhas da raiz
+      const childPages = await this.getAllChildPages(this.rootPageId);
+      console.log(`Encontradas ${childPages.length} páginas para remover`);
+
+      // Remove cada página
+      for (const pageId of childPages) {
+        try {
+          await this.archivePage(pageId);
+          console.log(`Página ${pageId} arquivada com sucesso`);
+          // Pequeno delay para evitar rate limits
+          await new Promise((resolve) => setTimeout(resolve, 200));
+        } catch (error) {
+          console.error(`Erro ao arquivar página ${pageId}:`, error);
+          // Continua mesmo se houver erro
+        }
+      }
+    } catch (error) {
+      console.error("Erro ao limpar páginas da raiz:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Obtém todas as páginas filhas de um parent
+   * Adicionar na classe NotionSyncService
+   */
+  private async getAllChildPages(parentId: string): Promise<string[]> {
+    try {
+      const pageIds: string[] = [];
+      let hasMore = true;
+      let cursor: string | undefined;
+
+      // Busca paginada para garantir que todas as páginas sejam encontradas
+      while (hasMore) {
+        const params: any = {
+          url: `https://api.notion.com/v1/blocks/${parentId}/children?page_size=100`,
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${this.notionClient.getToken()}`,
+            "Notion-Version": "2022-06-28",
+          },
+        };
+
+        // Adiciona cursor de paginação se necessário
+        if (cursor) {
+          params.url += `&start_cursor=${cursor}`;
+        }
+
+        const response = await requestUrl(params);
+
+        if (response.status === 200) {
+          const data = response.json;
+
+          // Filtra apenas blocos do tipo página
+          const pages = data.results.filter(
+            (block: any) => block.type === "child_page"
+          );
+
+          // Adiciona os IDs ao array
+          for (const page of pages) {
+            pageIds.push(page.id);
+          }
+
+          // Verifica se há mais páginas
+          hasMore = data.has_more;
+          cursor = data.next_cursor;
+        } else {
+          throw new Error(`Erro ao buscar páginas: ${response.status}`);
+        }
+      }
+
+      return pageIds;
+    } catch (error) {
+      console.error(`Erro ao obter páginas filhas de ${parentId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Arquiva uma página do Notion
+   * Adicionar na classe NotionSyncService
+   */
+  private async archivePage(pageId: string): Promise<void> {
+    try {
+      const params = {
+        url: `https://api.notion.com/v1/pages/${pageId}`,
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${this.notionClient.getToken()}`,
+          "Notion-Version": "2022-06-28",
+          "Content-Type": "application/json",
+        },
+        contentType: "application/json",
+        body: JSON.stringify({
+          archived: true,
+        }),
+      };
+
+      const response = await requestUrl(params);
+
+      if (response.status !== 200) {
+        throw new Error(`Erro ao arquivar página: ${response.status}`);
+      }
+    } catch (error) {
+      console.error(`Erro ao arquivar página ${pageId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Verifica se a página do Notion existe
+   * Adicionar na classe NotionSyncService
+   */
+  private async doesNotionPageExist(pageId: string): Promise<boolean> {
+    try {
+      console.log(`Verificando se a página ${pageId} existe no Notion...`);
+
+      const params = {
+        url: `https://api.notion.com/v1/pages/${pageId}`,
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${this.notionClient.getToken()}`,
+          "Notion-Version": "2022-06-28",
+        },
+      };
+
+      const response = await requestUrl(params);
+      return response.status === 200;
+    } catch (error) {
+      // Se receber erro 404, a página não existe mais
+      if (error.status === 404) {
+        console.log(`Página ${pageId} não existe mais no Notion`);
+        return false;
+      }
+
+      console.error(`Erro ao verificar existência da página ${pageId}:`, error);
+      // Em caso de outros erros, assumimos que a página existe para evitar duplicações
+      return true;
+    }
+  }
+
+  /**
+   * Parser simplificado de Markdown para blocos do Notion
+   * Adicionar à classe NotionSyncService
+   */
+  private parseMarkdownToBlocks(markdown: string): any[] {
+    const blocks: any[] = [];
+
+    // Normalização do texto
+    const normalizedMd = markdown
+      .replace(/\r\n/g, "\n") // Normaliza quebras de linha
+      .replace(/\t/g, "    "); // Converte tabs em espaços
+
+    const lines = normalizedMd.split("\n");
+    let i = 0;
+
+    while (i < lines.length) {
+      const line = lines[i];
+
+      // Blocos de código
+      if (line.startsWith("```")) {
+        const langMatch = line.match(/^```(\w*)/);
+        const language = langMatch ? langMatch[1] : "";
+
+        let codeContent = "";
+        i++; // Pula a linha de abertura
+
+        const startLine = i; // Guarda onde começa o conteúdo
+
+        // Coleta o conteúdo até encontrar a linha de fechamento
+        while (i < lines.length && !lines[i].startsWith("```")) {
+          if (i > startLine) codeContent += "\n";
+          codeContent += lines[i];
+          i++;
+        }
+
+        i++; // Pula a linha de fechamento
+
+        // Adiciona bloco de código com o conteúdo completo
+        blocks.push({
+          type: "code",
+          code: {
+            rich_text: [
+              {
+                type: "text",
+                text: { content: codeContent },
+              },
+            ],
+            language: language || "plain text",
+          },
+        });
+
+        continue;
+      }
+
+      // Cabeçalhos (h1, h2, h3)
+      if (line.startsWith("# ")) {
+        blocks.push({
+          type: "heading_1",
+          heading_1: {
+            rich_text: [
+              {
+                type: "text",
+                text: { content: line.substring(2) },
+              },
+            ],
+          },
+        });
+        i++;
+        continue;
+      }
+
+      if (line.startsWith("## ")) {
+        blocks.push({
+          type: "heading_2",
+          heading_2: {
+            rich_text: [
+              {
+                type: "text",
+                text: { content: line.substring(3) },
+              },
+            ],
+          },
+        });
+        i++;
+        continue;
+      }
+
+      if (line.startsWith("### ")) {
+        blocks.push({
+          type: "heading_3",
+          heading_3: {
+            rich_text: [
+              {
+                type: "text",
+                text: { content: line.substring(4) },
+              },
+            ],
+          },
+        });
+        i++;
+        continue;
+      }
+
+      // Listas não ordenadas
+      if (/^\s*[-*+]\s/.test(line)) {
+        const content = line.replace(/^\s*[-*+]\s/, "");
+        blocks.push({
+          type: "bulleted_list_item",
+          bulleted_list_item: {
+            rich_text: [
+              {
+                type: "text",
+                text: { content },
+              },
+            ],
+          },
+        });
+        i++;
+        continue;
+      }
+
+      // Listas ordenadas
+      if (/^\s*\d+\.\s/.test(line)) {
+        const content = line.replace(/^\s*\d+\.\s/, "");
+        blocks.push({
+          type: "numbered_list_item",
+          numbered_list_item: {
+            rich_text: [
+              {
+                type: "text",
+                text: { content },
+              },
+            ],
+          },
+        });
+        i++;
+        continue;
+      }
+
+      // Linha horizontal
+      if (/^-{3,}$|^_{3,}$|^\*{3,}$/.test(line)) {
+        blocks.push({
+          type: "divider",
+          divider: {},
+        });
+        i++;
+        continue;
+      }
+
+      // Parágrafos
+      // Acumula linhas em um único parágrafo até encontrar uma linha em branco
+      if (line.trim() !== "") {
+        let paragraphContent = line;
+        i++;
+
+        while (
+          i < lines.length &&
+          lines[i].trim() !== "" &&
+          !lines[i].startsWith("#") &&
+          !lines[i].startsWith("```") &&
+          !lines[i].match(/^\s*[-*+]\s/) &&
+          !lines[i].match(/^\s*\d+\.\s/)
+        ) {
+          paragraphContent += "\n" + lines[i];
+          i++;
+        }
+
+        blocks.push({
+          type: "paragraph",
+          paragraph: {
+            rich_text: [
+              {
+                type: "text",
+                text: { content: paragraphContent },
+              },
+            ],
+          },
+        });
+
+        continue;
+      }
+
+      // Linhas em branco
+      i++;
+    }
+
+    // Adiciona o objeto necessário para cada bloco
+    return blocks.map((block) => ({
+      object: "block",
+      ...block,
+    }));
+  }
+
+  /**
+   * Método otimizado para criar páginas no Notion com máxima fidelidade
+   * Substituir na classe NotionSyncService
    */
   private async createFormattedNotionPage(
     parentId: string,
@@ -104,26 +555,41 @@ export default class NotionSyncService {
       const pageId = createResponse.json.id;
       console.log(`Página base criada com ID: ${pageId}`);
 
-      // 2. Converter o markdown para blocos do Notion de forma otimizada
-      const blocks = await this.convertMarkdownToEnhancedBlocks(
-        markdownContent
-      );
+      // 2. Usar o parser otimizado para blocos Notion
+      const blocks = this.parseMarkdownToBlocks(markdownContent);
 
       // 3. Adicionar os blocos em lotes para evitar limitações da API
-      const MAX_BLOCKS_PER_REQUEST = 40;
+      const MAX_BLOCKS_PER_REQUEST = 30; // Reduzido para maior segurança
       for (let i = 0; i < blocks.length; i += MAX_BLOCKS_PER_REQUEST) {
         const blockBatch = blocks.slice(i, i + MAX_BLOCKS_PER_REQUEST);
 
         try {
           await this.appendBlocksWithRetry(pageId, blockBatch);
-          // Pequeno delay entre requisições para evitar rate limits
-          await new Promise((resolve) => setTimeout(resolve, 300));
+          // Maior delay entre requisições para maior segurança
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          console.log(
+            `Lote ${Math.floor(i / MAX_BLOCKS_PER_REQUEST) + 1}/${Math.ceil(
+              blocks.length / MAX_BLOCKS_PER_REQUEST
+            )} adicionado`
+          );
         } catch (appendError) {
           console.error(
             `Erro ao adicionar lote ${i / MAX_BLOCKS_PER_REQUEST + 1}:`,
             appendError
           );
-          // Continua mesmo com erro em um lote
+          console.error(appendError);
+          // Tenta com lotes menores em caso de erro
+          try {
+            for (const block of blockBatch) {
+              await this.appendBlocksWithRetry(pageId, [block]);
+              await new Promise((resolve) => setTimeout(resolve, 200));
+            }
+          } catch (finalError) {
+            console.error(
+              "Falha em adicionar blocos individualmente:",
+              finalError
+            );
+          }
         }
       }
 
@@ -641,44 +1107,11 @@ export default class NotionSyncService {
     );
   }
 
-
   /**
- * Verifica se a página do Notion existe
- * Adicionar na classe NotionSyncService
- */
-private async doesNotionPageExist(pageId: string): Promise<boolean> {
-    try {
-      console.log(`Verificando se a página ${pageId} existe no Notion...`);
-      
-      const params = {
-        url: `https://api.notion.com/v1/pages/${pageId}`,
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${this.notionClient.getToken()}`,
-          "Notion-Version": "2022-06-28"
-        }
-      };
-      
-      const response = await requestUrl(params);
-      return response.status === 200;
-    } catch (error) {
-      // Se receber erro 404, a página não existe mais
-      if (error.status === 404) {
-        console.log(`Página ${pageId} não existe mais no Notion`);
-        return false;
-      }
-      
-      console.error(`Erro ao verificar existência da página ${pageId}:`, error);
-      // Em caso de outros erros, assumimos que a página existe para evitar duplicações
-      return true;
-    }
-  }
-
-  /**
- * Cria um bloco de parágrafo
- * Adicionar na classe NotionSyncService
- */
-private createParagraphBlock(content: string): any {
+   * Cria um bloco de parágrafo
+   * Adicionar na classe NotionSyncService
+   */
+  private createParagraphBlock(content: string): any {
     return {
       object: "block",
       type: "paragraph",
@@ -694,14 +1127,17 @@ private createParagraphBlock(content: string): any {
       },
     };
   }
-  
+
   /**
    * Cria um bloco de cabeçalho
    * Adicionar na classe NotionSyncService
    */
   private createHeadingBlock(content: string, level: 1 | 2 | 3): any {
-    const headingType = `heading_${level}` as "heading_1" | "heading_2" | "heading_3";
-    
+    const headingType = `heading_${level}` as
+      | "heading_1"
+      | "heading_2"
+      | "heading_3";
+
     return {
       object: "block",
       type: headingType,
@@ -717,7 +1153,7 @@ private createParagraphBlock(content: string): any {
       },
     };
   }
-  
+
   /**
    * Cria um item de lista não ordenada
    * Adicionar na classe NotionSyncService
@@ -738,7 +1174,7 @@ private createParagraphBlock(content: string): any {
       },
     };
   }
-  
+
   /**
    * Cria um item de lista ordenada
    * Adicionar na classe NotionSyncService
@@ -1175,245 +1611,6 @@ private createParagraphBlock(content: string): any {
   }
 
   /**
-   * Método existente de criação de página com requestUrl
-   */
-  private async createNotionPageWithRequestUrl(
-    parentId: string,
-    title: string,
-    blocks: any[],
-    metadata: Record<string, any> = {}
-  ): Promise<string> {
-    try {
-      console.log(
-        `Criando página "${title}" no parent ${parentId} (via requestUrl)`
-      );
-
-      // Preparar propriedades com base nos metadados
-      const properties: any = {
-        title: {
-          title: [
-            {
-              text: {
-                content: title,
-              },
-            },
-          ],
-        },
-      };
-
-      // Adicionar outras propriedades com base nos metadados
-      for (const [key, value] of Object.entries(metadata)) {
-        // Ignora chaves vazias
-        if (!key.trim()) continue;
-
-        // Adiciona como texto (simplificado - no futuro podemos melhorar isso)
-        properties[key] = {
-          rich_text: [
-            {
-              type: "text",
-              text: {
-                content: String(value),
-              },
-            },
-          ],
-        };
-      }
-
-      // Verifica se existem blocos muito grandes ou problemáticos
-      // Notion tem limite de tamanho para cada requisição
-      const MAX_BLOCKS_PER_REQUEST = 50;
-      const chunkedBlocks = [];
-
-      // Divide os blocos em grupos de MAX_BLOCKS_PER_REQUEST
-      for (let i = 0; i < blocks.length; i += MAX_BLOCKS_PER_REQUEST) {
-        chunkedBlocks.push(blocks.slice(i, i + MAX_BLOCKS_PER_REQUEST));
-      }
-
-      // Preparar dados para a requisição inicial (com os primeiros blocos ou vazio)
-      const initialBlocks = chunkedBlocks.length > 0 ? chunkedBlocks[0] : [];
-
-      // Sanitiza os blocos para evitar problemas com caracteres especiais
-      const sanitizedBlocks = initialBlocks.map((block) => {
-        // Tratamento especial para blocos de código
-        if (
-          block.type === "code" &&
-          block.code?.rich_text?.[0]?.text?.content
-        ) {
-          // Limita o tamanho do conteúdo de código para evitar problemas
-          const content = block.code.rich_text[0].text.content;
-          if (content.length > 2000) {
-            block.code.rich_text[0].text.content =
-              content.substring(0, 2000) +
-              "\n\n... (conteúdo truncado devido a limitações da API)";
-          }
-        }
-        return block;
-      });
-
-      const data = {
-        parent: {
-          page_id: parentId,
-        },
-        properties: properties,
-        children: sanitizedBlocks,
-      };
-
-      // Configurar parâmetros da requisição
-      const params = {
-        url: "https://api.notion.com/v1/pages",
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${this.notionClient.getToken()}`,
-          "Notion-Version": "2022-06-28",
-          "Content-Type": "application/json",
-        },
-        contentType: "application/json",
-        body: JSON.stringify(data),
-      };
-
-      console.log(`Enviando requisição para criar página: ${title}`);
-      const response = await requestUrl(params);
-
-      if (response.status !== 200) {
-        console.error(
-          `Erro ao criar página (status ${response.status}):`,
-          response.text
-        );
-
-        // Tenta uma abordagem simplificada sem blocos
-        console.log("Tentando criar página sem blocos de conteúdo...");
-
-        const simplifiedData = {
-          parent: {
-            page_id: parentId,
-          },
-          properties: properties,
-          children: [
-            {
-              object: "block",
-              type: "paragraph",
-              paragraph: {
-                rich_text: [
-                  {
-                    type: "text",
-                    text: {
-                      content:
-                        "Conteúdo não foi possível sincronizar devido a limitações da API.",
-                    },
-                  },
-                ],
-              },
-            },
-          ],
-        };
-
-        const simplifiedParams = {
-          ...params,
-          body: JSON.stringify(simplifiedData),
-        };
-
-        const fallbackResponse = await requestUrl(simplifiedParams);
-
-        if (fallbackResponse.status !== 200) {
-          throw new Error(
-            `Falha ao criar página simplificada: ${fallbackResponse.status}`
-          );
-        }
-
-        const responseJson = fallbackResponse.json;
-        console.log(
-          `Página criada com conteúdo limitado. ID: ${responseJson.id}`
-        );
-
-        // Se tiver blocos adicionais, tenta adicioná-los depois
-        if (chunkedBlocks.length > 1) {
-          try {
-            for (let i = 1; i < chunkedBlocks.length; i++) {
-              await this.appendBlocksToPage(responseJson.id, chunkedBlocks[i]);
-            }
-          } catch (appendError) {
-            console.error(
-              "Não foi possível adicionar todos os blocos:",
-              appendError
-            );
-          }
-        }
-
-        return responseJson.id;
-      }
-
-      const responseJson = response.json;
-      console.log(`Página criada com sucesso. ID: ${responseJson.id}`);
-
-      // Se tiver mais blocos para adicionar, faz em requisições separadas
-      if (chunkedBlocks.length > 1) {
-        try {
-          for (let i = 1; i < chunkedBlocks.length; i++) {
-            await this.appendBlocksToPage(responseJson.id, chunkedBlocks[i]);
-          }
-        } catch (appendError) {
-          console.error(
-            "Não foi possível adicionar todos os blocos:",
-            appendError
-          );
-        }
-      }
-
-      return responseJson.id;
-    } catch (error) {
-      console.error(`Erro ao criar página ${title} em ${parentId}:`, error);
-
-      // Tentativa final com conteúdo mínimo
-      try {
-        console.log("Tentativa final: criando página com conteúdo mínimo");
-
-        const minimalData = {
-          parent: {
-            page_id: parentId,
-          },
-          properties: {
-            title: {
-              title: [
-                {
-                  text: {
-                    content: title,
-                  },
-                },
-              ],
-            },
-          },
-        };
-
-        const minimalParams = {
-          url: "https://api.notion.com/v1/pages",
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${this.notionClient.getToken()}`,
-            "Notion-Version": "2022-06-28",
-            "Content-Type": "application/json",
-          },
-          contentType: "application/json",
-          body: JSON.stringify(minimalData),
-        };
-
-        const lastResortResponse = await requestUrl(minimalParams);
-
-        if (lastResortResponse.status === 200) {
-          const responseJson = lastResortResponse.json;
-          console.log(
-            `Página criada com conteúdo mínimo. ID: ${responseJson.id}`
-          );
-          return responseJson.id;
-        }
-      } catch (finalError) {
-        console.error("Falha na tentativa final:", finalError);
-      }
-
-      throw error;
-    }
-  }
-
-  /**
    * Adiciona blocos a uma página existente de forma segura
    */
   private async appendBlocksSafely(
@@ -1473,218 +1670,6 @@ private createParagraphBlock(content: string): any {
           blocks = blocks.slice(0, Math.floor(blocks.length / 2));
         }
       }
-    }
-  }
-
-  /**
-   * Adiciona blocos a uma página existente
-   */
-  private async appendBlocksToPage(
-    pageId: string,
-    blocks: any[]
-  ): Promise<void> {
-    try {
-      console.log(`Adicionando ${blocks.length} blocos à página ${pageId}`);
-
-      // Sanitiza os blocos
-      const sanitizedBlocks = blocks.map((block) => {
-        // Tratamento especial para blocos de código
-        if (
-          block.type === "code" &&
-          block.code?.rich_text?.[0]?.text?.content
-        ) {
-          // Limita o tamanho do conteúdo de código
-          const content = block.code.rich_text[0].text.content;
-          if (content.length > 2000) {
-            block.code.rich_text[0].text.content =
-              content.substring(0, 2000) +
-              "\n\n... (conteúdo truncado devido a limitações da API)";
-          }
-        }
-        return block;
-      });
-
-      const appendParams = {
-        url: `https://api.notion.com/v1/blocks/${pageId}/children`,
-        method: "PATCH",
-        headers: {
-          Authorization: `Bearer ${this.notionClient.getToken()}`,
-          "Notion-Version": "2022-06-28",
-          "Content-Type": "application/json",
-        },
-        contentType: "application/json",
-        body: JSON.stringify({
-          children: sanitizedBlocks,
-        }),
-      };
-
-      const response = await requestUrl(appendParams);
-
-      if (response.status !== 200) {
-        console.error(
-          `Erro ao adicionar blocos (status ${response.status}):`,
-          response.text
-        );
-        throw new Error(`Falha ao adicionar blocos: ${response.status}`);
-      }
-
-      console.log(`Blocos adicionados com sucesso à página ${pageId}`);
-    } catch (error) {
-      console.error(`Erro ao adicionar blocos à página ${pageId}:`, error);
-      throw error;
-    }
-  }
-
-  /**
-   * Método atualizado para atualizar páginas existentes de forma robusta
-   */
-  private async updateNotionPageRobust(
-    pageId: string,
-    title: string,
-    content: string,
-    metadata: Record<string, any> = {}
-  ): Promise<void> {
-    try {
-      console.log(`Atualizando página: ${pageId} com título: ${title}`);
-
-      // Atualiza o título
-      const updateParams = {
-        url: `https://api.notion.com/v1/pages/${pageId}`,
-        method: "PATCH",
-        headers: {
-          Authorization: `Bearer ${this.notionClient.getToken()}`,
-          "Notion-Version": "2022-06-28",
-          "Content-Type": "application/json",
-        },
-        contentType: "application/json",
-        body: JSON.stringify({
-          properties: {
-            title: {
-              title: [
-                {
-                  text: {
-                    content: title,
-                  },
-                },
-              ],
-            },
-          },
-        }),
-      };
-
-      await requestUrl(updateParams);
-      console.log(`Título da página atualizado para: ${title}`);
-
-      // Limpa todos os blocos existentes
-      await this.clearAllBlocks(pageId);
-
-      // Processa o conteúdo de forma robusta
-      const enhancedBlocks = enhancedMarkdownToNotionBlocks(content);
-      const blockChunks = splitIntoManageableBlocks(enhancedBlocks);
-
-      // Adiciona os blocos em chunks
-      for (let i = 0; i < blockChunks.length; i++) {
-        await this.appendBlocksSafely(pageId, blockChunks[i]);
-        // Pequeno delay entre requisições
-        await new Promise((resolve) => setTimeout(resolve, 300));
-      }
-
-      console.log(`Página ${pageId} atualizada com sucesso`);
-    } catch (error) {
-      console.error(`Erro ao atualizar página ${pageId}:`, error);
-
-      // Tentar uma abordagem simplificada
-      try {
-        console.log("Tentando atualizar apenas com conteúdo básico...");
-        const basicBlock = {
-          object: "block",
-          type: "paragraph",
-          paragraph: {
-            rich_text: [
-              {
-                type: "text",
-                text: {
-                  content:
-                    "Este conteúdo foi simplificado devido à complexidade do original.",
-                },
-              },
-            ],
-          },
-        };
-
-        await this.appendBlocksSafely(pageId, [basicBlock]);
-        console.log("Página atualizada com conteúdo simplificado");
-      } catch (fallbackError) {
-        console.error("Falha completa ao atualizar página:", fallbackError);
-        throw error;
-      }
-    }
-  }
-
-  /**
-   * Atualiza uma página existente no Notion
-   */
-  private async updateNotionPage(
-    pageId: string,
-    title: string,
-    blocks: any[]
-  ): Promise<void> {
-    try {
-      console.log(`Atualizando página: ${pageId} com título: ${title}`);
-
-      // Atualiza o título usando requestUrl
-      const updateParams = {
-        url: `https://api.notion.com/v1/pages/${pageId}`,
-        method: "PATCH",
-        headers: {
-          Authorization: `Bearer ${this.notionClient.getToken()}`,
-          "Notion-Version": "2022-06-28",
-          "Content-Type": "application/json",
-        },
-        contentType: "application/json",
-        body: JSON.stringify({
-          properties: {
-            title: {
-              title: [
-                {
-                  text: {
-                    content: title,
-                  },
-                },
-              ],
-            },
-          },
-        }),
-      };
-
-      await requestUrl(updateParams);
-      console.log(`Título da página atualizado para: ${title}`);
-
-      // Limpa todos os blocos existentes
-      await this.clearAllBlocks(pageId);
-
-      // Adiciona os novos blocos
-      const appendParams = {
-        url: `https://api.notion.com/v1/blocks/${pageId}/children`,
-        method: "PATCH",
-        headers: {
-          Authorization: `Bearer ${this.notionClient.getToken()}`,
-          "Notion-Version": "2022-06-28",
-          "Content-Type": "application/json",
-        },
-        contentType: "application/json",
-        body: JSON.stringify({
-          children: blocks,
-        }),
-      };
-
-      await requestUrl(appendParams);
-      console.log(`Novos blocos adicionados à página ${pageId}`);
-
-      console.log(`Página ${pageId} atualizada com sucesso`);
-    } catch (error) {
-      console.error(`Erro ao atualizar página ${pageId}:`, error);
-      throw error;
     }
   }
 

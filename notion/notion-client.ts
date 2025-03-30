@@ -11,8 +11,6 @@ export default class NotionClient {
     this.token = token;
   }
 
-  
-  
   async createPageWithMarkdown(
     parentId: string,
     title: string,

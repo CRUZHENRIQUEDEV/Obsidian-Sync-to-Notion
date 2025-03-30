@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@notionhq/client": "^2.3.0",
+    "@tryfabric/martian": "^1.2.4",
     "obsidian": "^1.8.7",
     "tslib": "^2.8.1"
   },
