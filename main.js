@@ -11752,6 +11752,8 @@ var DEFAULT_SETTINGS = {
   notionToken: "",
   rootPageId: "",
   syncOnSave: false,
+  autoSyncInterval: 0,
+  // Desativado por padrão
   excludeFolders: [],
   lastSyncTimestamp: 0,
   fileTracking: {},
@@ -11782,6 +11784,24 @@ var SettingsTab = class extends import_obsidian3.PluginSettingTab {
       this.plugin.settings.syncOnSave = value;
       await this.plugin.saveSettings();
     }));
+    const autoSyncSetting = new import_obsidian3.Setting(containerEl).setName("Auto Sync Interval").setDesc("Set interval in minutes for automatic synchronization (0 to disable)").addSlider(
+      (slider) => slider.setLimits(0, 120, 5).setValue(this.plugin.settings.autoSyncInterval).setDynamicTooltip().onChange(async (value) => {
+        this.plugin.settings.autoSyncInterval = value;
+        await this.plugin.saveSettings();
+        this.plugin.restartAutoSyncTimer();
+        sliderValue.setText(value === 0 ? "Disabled" : `${value} minutes`);
+      })
+    ).addExtraButton(
+      (button) => button.setIcon("reset").setTooltip("Reset to default").onClick(async () => {
+        this.plugin.settings.autoSyncInterval = DEFAULT_SETTINGS.autoSyncInterval;
+        await this.plugin.saveSettings();
+        this.display();
+      })
+    );
+    const sliderValue = containerEl.createEl("span");
+    sliderValue.setText(
+      this.plugin.settings.autoSyncInterval === 0 ? "Disabled" : `${this.plugin.settings.autoSyncInterval} minutes`
+    );
     new import_obsidian3.Setting(containerEl).setName("Excluded folders").setDesc("List of folders to exclude from syncing (comma separated)").addText((text) => text.setPlaceholder("folder1, folder2/subfolder").setValue(this.plugin.settings.excludeFolders.join(", ")).onChange(async (value) => {
       this.plugin.settings.excludeFolders = value.split(",").map((folder) => folder.trim()).filter((folder) => folder);
       await this.plugin.saveSettings();
@@ -11851,6 +11871,10 @@ var ConfirmationModal = class extends import_obsidian4.Modal {
   }
 };
 var NotionSyncPlugin = class extends import_obsidian4.Plugin {
+  constructor() {
+    super(...arguments);
+    this.autoSyncTimer = null;
+  }
   async onload() {
     console.log("\u{1F7E1} Plugin Notion Sync carregando...");
     await this.loadSettings();
@@ -11866,6 +11890,7 @@ var NotionSyncPlugin = class extends import_obsidian4.Plugin {
     } else {
       console.warn("\u26A0\uFE0F Token ou Root Page ID n\xE3o configurados.");
     }
+    this.setupAutoSyncTimer();
     this.addCommand({
       id: "sync-to-notion",
       name: "Sync to Notion",
@@ -11988,8 +12013,62 @@ var NotionSyncPlugin = class extends import_obsidian4.Plugin {
       );
     }
   }
+  // Método para configurar o temporizador de sincronização automática
+  setupAutoSyncTimer() {
+    this.clearAutoSyncTimer();
+    if (this.settings.autoSyncInterval > 0) {
+      console.log(
+        `\u23F1\uFE0F Configurando sincroniza\xE7\xE3o autom\xE1tica a cada ${this.settings.autoSyncInterval} minutos`
+      );
+      const intervalMs = this.settings.autoSyncInterval * 60 * 1e3;
+      this.autoSyncTimer = setInterval(async () => {
+        await this.runAutoSync();
+      }, intervalMs);
+    }
+  }
+  // Método para limpar o temporizador
+  clearAutoSyncTimer() {
+    if (this.autoSyncTimer) {
+      clearInterval(this.autoSyncTimer);
+      this.autoSyncTimer = null;
+    }
+  }
+  // Método para reiniciar o temporizador (útil quando as configurações mudam)
+  restartAutoSyncTimer() {
+    console.log("\u{1F504} Reiniciando temporizador de sincroniza\xE7\xE3o autom\xE1tica...");
+    this.setupAutoSyncTimer();
+  }
+  // Método para executar a sincronização automática
+  async runAutoSync() {
+    console.log("\u23F0 Executando sincroniza\xE7\xE3o autom\xE1tica programada...");
+    if (!this.settings.notionToken || !this.settings.rootPageId) {
+      console.warn(
+        "\u26A0\uFE0F Sincroniza\xE7\xE3o autom\xE1tica ignorada: token ou rootPageId n\xE3o configurados"
+      );
+      return;
+    }
+    try {
+      const files = await scanVault(
+        this.app.vault,
+        this.settings.excludeFolders
+      );
+      console.log(
+        `\u{1F4C1} Sincroniza\xE7\xE3o autom\xE1tica: ${files.length} arquivos encontrados`
+      );
+      await this.notionSyncService.syncFilesToNotion(files, this.app.vault);
+      this.settings.lastSyncTimestamp = Date.now();
+      this.settings.fileTracking = this.notionSyncService.getFileTracking();
+      await this.saveSettings();
+      console.log("\u2705 Sincroniza\xE7\xE3o autom\xE1tica conclu\xEDda com sucesso");
+      new import_obsidian4.Notice("Auto sync completed successfully!");
+    } catch (error) {
+      console.error("\u274C Erro durante sincroniza\xE7\xE3o autom\xE1tica:", error);
+      new import_obsidian4.Notice(`Auto sync error: ${error.message}`);
+    }
+  }
   onunload() {
     console.log("\u{1F534} Plugin Notion Sync descarregado.");
+    this.clearAutoSyncTimer();
   }
   async loadSettings() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
@@ -12006,6 +12085,7 @@ var NotionSyncPlugin = class extends import_obsidian4.Plugin {
         // Passamos os dados de rastreamento
       );
       console.log("\u2705 Servi\xE7o do Notion reinicializado ap\xF3s salvar configs.");
+      this.restartAutoSyncTimer();
     }
   }
 };

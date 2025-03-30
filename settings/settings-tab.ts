@@ -1,5 +1,6 @@
 import { App, PluginSettingTab, Setting } from 'obsidian';
 import NotionSyncPlugin from '../main';
+import { DEFAULT_SETTINGS } from './plugin-settings';
 
 export default class SettingsTab extends PluginSettingTab {
 	plugin: NotionSyncPlugin;
@@ -47,6 +48,44 @@ export default class SettingsTab extends PluginSettingTab {
 					this.plugin.settings.syncOnSave = value;
 					await this.plugin.saveSettings();
 				}));
+
+		// Configuração para o intervalo de sincronização automática
+		const autoSyncSetting = new Setting(containerEl)
+			.setName("Auto Sync Interval")
+			.setDesc("Set interval in minutes for automatic synchronization (0 to disable)")
+			.addSlider(slider => 
+				slider
+					.setLimits(0, 120, 5)
+					.setValue(this.plugin.settings.autoSyncInterval)
+					.setDynamicTooltip()
+					.onChange(async (value) => {
+						this.plugin.settings.autoSyncInterval = value;
+						await this.plugin.saveSettings();
+						
+						// Reinicia o temporizador se estiver ativo
+						this.plugin.restartAutoSyncTimer();
+						
+						// Mostra o valor atual
+						sliderValue.setText(value === 0 ? "Disabled" : `${value} minutes`);
+					})
+			)
+			.addExtraButton(button => 
+				button
+					.setIcon("reset")
+					.setTooltip("Reset to default")
+					.onClick(async () => {
+						this.plugin.settings.autoSyncInterval = DEFAULT_SETTINGS.autoSyncInterval;
+						await this.plugin.saveSettings();
+						this.display();
+					})
+			);
+
+		const sliderValue = containerEl.createEl("span");
+		sliderValue.setText(
+			this.plugin.settings.autoSyncInterval === 0 
+				? "Disabled" 
+				: `${this.plugin.settings.autoSyncInterval} minutes`
+		);
 
 		new Setting(containerEl)
 			.setName('Excluded folders')

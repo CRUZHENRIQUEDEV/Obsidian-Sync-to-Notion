@@ -1,10 +1,4 @@
-import {
-  App,
-  Modal,
-  Notice,
-  Plugin,
-  TFile,
-} from "obsidian";
+import { App, Modal, Notice, Plugin, TFile } from "obsidian";
 import NotionSyncService from "./notion/notion-sync-service";
 import { scanVault } from "./utils/vault-scanner";
 import {
@@ -79,6 +73,7 @@ class ConfirmationModal extends Modal {
 export default class NotionSyncPlugin extends Plugin {
   settings: NotionSyncSettings;
   notionSyncService: NotionSyncService;
+  autoSyncTimer: NodeJS.Timeout | null = null;
 
   async onload() {
     console.log("🟡 Plugin Notion Sync carregando...");
@@ -95,6 +90,9 @@ export default class NotionSyncPlugin extends Plugin {
     } else {
       console.warn("⚠️ Token ou Root Page ID não configurados.");
     }
+
+    // Inicia o temporizador de sincronização automática
+    this.setupAutoSyncTimer();
 
     this.addCommand({
       id: "sync-to-notion",
@@ -245,8 +243,83 @@ export default class NotionSyncPlugin extends Plugin {
     }
   }
 
+  // Método para configurar o temporizador de sincronização automática
+  setupAutoSyncTimer() {
+    // Limpar qualquer timer existente
+    this.clearAutoSyncTimer();
+
+    // Se o intervalo for > 0, configurar o timer
+    if (this.settings.autoSyncInterval > 0) {
+      console.log(
+        `⏱️ Configurando sincronização automática a cada ${this.settings.autoSyncInterval} minutos`
+      );
+
+      // Converter minutos para milissegundos
+      const intervalMs = this.settings.autoSyncInterval * 60 * 1000;
+
+      this.autoSyncTimer = setInterval(async () => {
+        await this.runAutoSync();
+      }, intervalMs);
+    }
+  }
+
+  // Método para limpar o temporizador
+  clearAutoSyncTimer() {
+    if (this.autoSyncTimer) {
+      clearInterval(this.autoSyncTimer);
+      this.autoSyncTimer = null;
+    }
+  }
+
+  // Método para reiniciar o temporizador (útil quando as configurações mudam)
+  restartAutoSyncTimer() {
+    console.log("🔄 Reiniciando temporizador de sincronização automática...");
+    this.setupAutoSyncTimer();
+  }
+
+  // Método para executar a sincronização automática
+  async runAutoSync() {
+    console.log("⏰ Executando sincronização automática programada...");
+
+    // Verificar se temos as configurações necessárias
+    if (!this.settings.notionToken || !this.settings.rootPageId) {
+      console.warn(
+        "⚠️ Sincronização automática ignorada: token ou rootPageId não configurados"
+      );
+      return;
+    }
+
+    try {
+      // Obter os arquivos para sincronização
+      const files = await scanVault(
+        this.app.vault,
+        this.settings.excludeFolders
+      );
+
+      console.log(
+        `📁 Sincronização automática: ${files.length} arquivos encontrados`
+      );
+
+      // Sincronizar com o Notion
+      await this.notionSyncService.syncFilesToNotion(files, this.app.vault);
+
+      // Atualizar timestamp e salvar configurações
+      this.settings.lastSyncTimestamp = Date.now();
+      this.settings.fileTracking = this.notionSyncService.getFileTracking();
+      await this.saveSettings();
+
+      console.log("✅ Sincronização automática concluída com sucesso");
+      new Notice("Auto sync completed successfully!");
+    } catch (error) {
+      console.error("❌ Erro durante sincronização automática:", error);
+      new Notice(`Auto sync error: ${error.message}`);
+    }
+  }
+
   onunload() {
     console.log("🔴 Plugin Notion Sync descarregado.");
+    // Limpar o temporizador quando o plugin for descarregado
+    this.clearAutoSyncTimer();
   }
 
   async loadSettings() {
@@ -265,6 +338,9 @@ export default class NotionSyncPlugin extends Plugin {
         this.settings.fileTracking // Passamos os dados de rastreamento
       );
       console.log("✅ Serviço do Notion reinicializado após salvar configs.");
+
+      // Reiniciar o temporizador quando as configurações são salvas
+      this.restartAutoSyncTimer();
     }
   }
 }
