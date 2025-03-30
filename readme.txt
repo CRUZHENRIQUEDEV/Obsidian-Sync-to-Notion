@@ -1,36 +1,45 @@
-Vou melhorar o README para seu plugin, incluindo versões em português e inglês, com todas as informações necessárias para que os usuários compreendam e utilizem seu plugin efetivamente.
-
 # Obsidian Notion Sync
 
-<img src="https://img.shields.io/github/v/release/CRUZHENRIQUEDEV/obsidian-notion-sync?style=for-the-badge&sort=semver">
-<img src="https://img.shields.io/github/license/CRUZHENRIQUEDEV/obsidian-notion-sync?style=for-the-badge">
+<div align="center">
 
-**Obsidian Notion Sync** is a plugin for [Obsidian](https://obsidian.md) that allows you to seamlessly synchronize your notes with [Notion](https://notion.so).
+![Version](https://img.shields.io/github/v/release/CRUZHENRIQUEDEV/obsidian-notion-sync?style=for-the-badge&sort=semver)
+![License](https://img.shields.io/github/license/CRUZHENRIQUEDEV/obsidian-notion-sync?style=for-the-badge)
+[![Obsidian Downloads](https://img.shields.io/badge/dynamic/json?logo=obsidian&color=7e6ad6&label=downloads&query=%24%5B%22obsidian-notion-sync%22%5D.downloads&url=https%3A%2F%2Fraw.githubusercontent.com%2Fobsidianmd%2Fobsidian-releases%2Fmaster%2Fcommunity-plugin-stats.json&style=for-the-badge)](https://obsidian.md/plugins?id=obsidian-notion-sync)
 
-## 🌍 Languages
+<br/>
 
-- [English](#english)
-- [Português](#português)
+<img src="https://raw.githubusercontent.com/CRUZHENRIQUEDEV/obsidian-notion-sync/main/assets/logo.png" alt="Obsidian Notion Sync Logo" width="200"/>
+
+**A seamless bridge between Obsidian and Notion**
+
+[English](#english) | [Português](#português)
+
+</div>
 
 ---
 
+<a name="english"></a>
 # English
 
 ## 📚 Overview
 
 This plugin creates a bridge between your Obsidian vault and Notion workspace, allowing you to:
 
-- Sync markdown files to Notion pages with preserved formatting
-- Maintain folder structure in Notion
-- Auto-sync files on save or at timed intervals
-- Keep track of changes for efficient syncing
-- Perform full resyncs when needed
+- ✅ Sync markdown files to Notion pages with preserved formatting
+- 📂 Maintain folder structure in Notion
+- 🔄 Auto-sync files on save or at timed intervals
+- 📝 Keep track of changes for efficient syncing
+- 🔁 Perform full resyncs when needed
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/CRUZHENRIQUEDEV/obsidian-notion-sync/main/assets/demo.gif" alt="Demo" width="700">
+</p>
 
 ## ⚙️ Installation
 
 ### Manual Installation
 
-1. Download the latest release from the [releases page](https://github.com/seu-usuario/obsidian-notion-sync/releases)
+1. Download the latest release from the [releases page](https://github.com/CRUZHENRIQUEDEV/obsidian-notion-sync/releases)
 2. Extract the zip file into your Obsidian vault's `.obsidian/plugins/` folder
 3. Enable the plugin in Obsidian's settings under "Community Plugins"
 
@@ -61,6 +70,16 @@ Before using the plugin, you need:
    - Paste your API token and root page ID
    - Configure other settings as needed
 
+<details>
+<summary><b>📸 Setup Screenshots</b></summary>
+<br>
+<p align="center">
+  <img src="https://raw.githubusercontent.com/CRUZHENRIQUEDEV/obsidian-notion-sync/main/assets/setup1.png" alt="Setup 1" width="600">
+  <br><br>
+  <img src="https://raw.githubusercontent.com/CRUZHENRIQUEDEV/obsidian-notion-sync/main/assets/setup2.png" alt="Setup 2" width="600">
+</p>
+</details>
+
 ## 🚀 Usage
 
 ### Commands
@@ -90,17 +109,23 @@ The plugin adds these commands to Obsidian:
 
 ## 🛠️ Troubleshooting
 
-### Common Issues
+<details>
+<summary><b>Common Issues</b></summary>
 
 - **Authentication Failed**: Check that your Notion token is correct and still valid
 - **Page Not Found**: Make sure the root page ID is correct and the page is shared with your integration
 - **Formatting Issues**: Some complex markdown elements might not render perfectly in Notion
 
-### Logs
+</details>
+
+<details>
+<summary><b>Debug Logs</b></summary>
 
 For debugging, check the console logs:
 - In Desktop: View > Toggle Developer Tools > Console
 - In Mobile: Not available directly, consider enabling debug mode in settings
+
+</details>
 
 ## 🔜 Roadmap
 
@@ -112,23 +137,28 @@ For debugging, check the console logs:
 
 ---
 
+<a name="português"></a>
 # Português
 
 ## 📚 Visão Geral
 
 Este plugin cria uma ponte entre seu vault do Obsidian e seu workspace do Notion, permitindo:
 
-- Sincronizar arquivos markdown com páginas do Notion mantendo a formatação
-- Manter a estrutura de pastas no Notion
-- Sincronização automática ao salvar ou em intervalos definidos
-- Acompanhar alterações para sincronização eficiente
-- Realizar ressincronizações completas quando necessário
+- ✅ Sincronizar arquivos markdown com páginas do Notion mantendo a formatação
+- 📂 Manter a estrutura de pastas no Notion
+- 🔄 Sincronização automática ao salvar ou em intervalos definidos
+- 📝 Acompanhar alterações para sincronização eficiente
+- 🔁 Realizar ressincronizações completas quando necessário
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/CRUZHENRIQUEDEV/obsidian-notion-sync/main/assets/demo.gif" alt="Demo" width="700">
+</p>
 
 ## ⚙️ Instalação
 
 ### Instalação Manual
 
-1. Baixe a versão mais recente da [página de releases](https://github.com/seu-usuario/obsidian-notion-sync/releases)
+1. Baixe a versão mais recente da [página de releases](https://github.com/CRUZHENRIQUEDEV/obsidian-notion-sync/releases)
 2. Extraia o arquivo zip na pasta `.obsidian/plugins/` do seu vault
 3. Ative o plugin nas configurações do Obsidian em "Community Plugins"
 
@@ -159,6 +189,16 @@ Antes de usar o plugin, você precisa:
    - Cole seu token de API e ID da página raiz
    - Configure outras opções conforme necessário
 
+<details>
+<summary><b>📸 Capturas de Tela de Configuração</b></summary>
+<br>
+<p align="center">
+  <img src="https://raw.githubusercontent.com/CRUZHENRIQUEDEV/obsidian-notion-sync/main/assets/setup1.png" alt="Configuração 1" width="600">
+  <br><br>
+  <img src="https://raw.githubusercontent.com/CRUZHENRIQUEDEV/obsidian-notion-sync/main/assets/setup2.png" alt="Configuração 2" width="600">
+</p>
+</details>
+
 ## 🚀 Uso
 
 ### Comandos
@@ -188,17 +228,23 @@ O plugin adiciona estes comandos ao Obsidian:
 
 ## 🛠️ Soluções de Problemas
 
-### Problemas Comuns
+<details>
+<summary><b>Problemas Comuns</b></summary>
 
 - **Falha na Autenticação**: Verifique se seu token do Notion está correto e ainda é válido
 - **Página Não Encontrada**: Certifique-se de que o ID da página raiz está correto e a página está compartilhada com sua integração
 - **Problemas de Formatação**: Alguns elementos markdown complexos podem não renderizar perfeitamente no Notion
 
-### Logs
+</details>
+
+<details>
+<summary><b>Logs de Depuração</b></summary>
 
 Para depuração, verifique os logs do console:
 - No Desktop: Visualizar > Alternar Ferramentas do Desenvolvedor > Console
 - No Mobile: Não disponível diretamente, considere ativar o modo de depuração nas configurações
+
+</details>
 
 ## 🔜 Roadmap
 
@@ -223,8 +269,12 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 If you find this plugin useful, please consider:
 - Star the repository on GitHub
 - Share it with others
-- [Buy me a coffee](https://buymeacoffee.com/your-username)
+- [Buy me a coffee](https://buymeacoffee.com/henriquecruz)
 
 ---
 
-Developed with ❤️ by [Henrique da Cruz Silva]
+<div align="center">
+
+Developed with ❤️ by [Henrique da Cruz Silva](https://github.com/CRUZHENRIQUEDEV)
+
+</div>
