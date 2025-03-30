@@ -1,24 +1,5 @@
 # Obsidian Notion Sync
 
-<p align="center">
-  <img src="https://img.shields.io/github/v/release/CRUZHENRIQUEDEV/obsidian-notion-sync?style=for-the-badge&sort=semver" alt="Version">
-  <img src="https://img.shields.io/github/license/CRUZHENRIQUEDEV/obsidian-notion-sync?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/dynamic/json?logo=obsidian&color=7e6ad6&label=downloads&query=%24%5B%22obsidian-notion-sync%22%5D.downloads&url=https%3A%2F%2Fraw.githubusercontent.com%2Fobsidianmd%2Fobsidian-releases%2Fmaster%2Fcommunity-plugin-stats.json&style=for-the-badge" alt="Obsidian Downloads">
-</p>
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/CRUZHENRIQUEDEV/obsidian-notion-sync/main/assets/logo.png" alt="Obsidian Notion Sync Logo" width="200"/>
-</p>
-
-<p align="center">
-  <b>A seamless bridge between Obsidian and Notion</b>
-</p>
-
-<p align="center">
-  <a href="#english">English</a> | <a href="#português">Português</a>
-</p>
-
----
 
 <a name="english"></a>
 # English
@@ -33,9 +14,6 @@ This plugin creates a bridge between your Obsidian vault and Notion workspace, a
 - 📝 Keep track of changes for efficient syncing
 - 🔁 Perform full resyncs when needed
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/CRUZHENRIQUEDEV/obsidian-notion-sync/main/assets/demo.gif" alt="Demo" width="700">
-</p>
 
 ## ⚙️ Installation
 
@@ -72,17 +50,6 @@ Before using the plugin, you need:
    - Paste your API token and root page ID
    - Configure other settings as needed
 
-<details>
-<summary><b>📸 Setup Screenshots</b></summary>
-<br>
-<p align="center">
-  <img src="https://raw.githubusercontent.com/CRUZHENRIQUEDEV/obsidian-notion-sync/main/assets/setup1.png" alt="Setup 1" width="600">
-</p>
-<br>
-<p align="center">
-  <img src="https://raw.githubusercontent.com/CRUZHENRIQUEDEV/obsidian-notion-sync/main/assets/setup2.png" alt="Setup 2" width="600">
-</p>
-</details>
 
 ## 🚀 Usage
 
@@ -111,25 +78,8 @@ The plugin adds these commands to Obsidian:
 4. It converts markdown to Notion blocks, preserving formatting and code blocks
 5. It updates existing pages or creates new ones as needed
 
-## 🛠️ Troubleshooting
 
-<details>
-<summary><b>Common Issues</b></summary>
 
-- **Authentication Failed**: Check that your Notion token is correct and still valid
-- **Page Not Found**: Make sure the root page ID is correct and the page is shared with your integration
-- **Formatting Issues**: Some complex markdown elements might not render perfectly in Notion
-
-</details>
-
-<details>
-<summary><b>Debug Logs</b></summary>
-
-For debugging, check the console logs:
-- In Desktop: View > Toggle Developer Tools > Console
-- In Mobile: Not available directly, consider enabling debug mode in settings
-
-</details>
 
 ## 🔜 Roadmap
 
@@ -154,9 +104,6 @@ Este plugin cria uma ponte entre seu vault do Obsidian e seu workspace do Notion
 - 📝 Acompanhar alterações para sincronização eficiente
 - 🔁 Realizar ressincronizações completas quando necessário
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/CRUZHENRIQUEDEV/obsidian-notion-sync/main/assets/demo.gif" alt="Demo" width="700">
-</p>
 
 ## ⚙️ Instalação
 
@@ -193,17 +140,7 @@ Antes de usar o plugin, você precisa:
    - Cole seu token de API e ID da página raiz
    - Configure outras opções conforme necessário
 
-<details>
-<summary><b>📸 Capturas de Tela de Configuração</b></summary>
-<br>
-<p align="center">
-  <img src="https://raw.githubusercontent.com/CRUZHENRIQUEDEV/obsidian-notion-sync/main/assets/setup1.png" alt="Configuração 1" width="600">
-</p>
-<br>
-<p align="center">
-  <img src="https://raw.githubusercontent.com/CRUZHENRIQUEDEV/obsidian-notion-sync/main/assets/setup2.png" alt="Configuração 2" width="600">
-</p>
-</details>
+
 
 ## 🚀 Uso
 
@@ -243,14 +180,7 @@ O plugin adiciona estes comandos ao Obsidian:
 
 </details>
 
-<details>
-<summary><b>Logs de Depuração</b></summary>
 
-Para depuração, verifique os logs do console:
-- No Desktop: Visualizar > Alternar Ferramentas do Desenvolvedor > Console
-- No Mobile: Não disponível diretamente, considere ativar o modo de depuração nas configurações
-
-</details>
 
 ## 🔜 Roadmap
 
@@ -270,14 +200,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 💖 Support
 
-If you find this plugin useful, please consider:
-- Star the repository on GitHub
-- Share it with others
-- [Buy me a coffee](https://buymeacoffee.com/henriquecruz)
-
----
 
 <p align="center">
   Developed with ❤️ by <a href="https://github.com/CRUZHENRIQUEDEV">Henrique da Cruz Silva</a>
