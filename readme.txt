@@ -12,8 +12,8 @@ This plugin creates a bridge between your Obsidian vault and Notion workspace, a
 
 ### Manual Installation
 
-1. Download the latest release from the main.js and manifest.json
-2. Extract the zip file into your Obsidian vault's `.obsidian/plugins/` folder
+1. Download the latest release from the main.js and manifest.json and create folder "Obsidian-Sync-to-Notion"
+2. paste folder into your Obsidian vault's `.obsidian/plugins/` folder
 3. Enable the plugin in Obsidian's settings under "Community Plugins"
 
 ### From Obsidian Community Plugins (Coming Soon)
@@ -97,8 +97,8 @@ Este plugin cria uma ponte entre seu vault do Obsidian e seu workspace do Notion
 
 ### Instalação Manual
 
-1. Baixe a versão mais recente da main.js e manifest.json
-2. Extraia o arquivo zip na pasta `.obsidian/plugins/` do seu vault
+1. Baixe a versão mais recente da main.js e manifest.json e coloque em uma pasta "Obsidian-Sync-to-Notion"
+2. coloque na pasta `.obsidian/plugins/` do seu vault
 3. Ative o plugin nas configurações do Obsidian em "Community Plugins"
 
 ### Pelos Plugins Comunitários do Obsidian (Em Breve)
