@@ -1,4 +1,4 @@
-##📚 Overview
+## 📚 Overview
 
 This plugin creates a bridge between your Obsidian vault and Notion workspace, allowing you to:
 
