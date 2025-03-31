@@ -31,18 +31,6 @@ This plugin creates a bridge between your Obsidian vault and Notion workspace, a
 
 Before using the plugin, you need:
 
-<<<<<<< HEAD
-1. **Notion API Token**:
-
-   - Go to [Notion Integrations](https://www.notion.so/my-integrations)
-   - Create a new integration
-   - Copy the secret token
-
-2. **Root Page ID**:
-
-   - Create or choose a page in Notion where your notes will be synced
-   - Share this page with your integration
-=======
 1. **Notion API Token**:  
    - Go to [Notion Integrations](https://www.notion.so/my-integrations)  
    - Create a new integration  
@@ -51,7 +39,6 @@ Before using the plugin, you need:
 2. **Root Page ID**:  
    - Create or choose a page in Notion where your notes will be synced  
    - Share this page with your integration  
->>>>>>> 2d7a7e70ce2fc38f5b4326c6bcad65a2b2c418fb
    - Copy the page ID from the URL (it's the long string after the workspace name and before any '?')
 
 3. **Configure the Plugin**:  
@@ -98,7 +85,6 @@ The plugin adds these commands to Obsidian:
 ---
 
 <a name="português"></a>
-
 # Português
 
 ## 📚 Visão Geral
@@ -115,17 +101,10 @@ Este plugin cria uma ponte entre seu vault do Obsidian e seu workspace do Notion
 
 ### Instalação Manual (Recomendada)
 
-<<<<<<< HEAD
-1. Baixe o arquivo mais recente: `Obsidian-Sync-to-Notion.zip`
-2. Extraia o conteúdo do ZIP (`main.js`, `manifest.json` e opcionalmente `styles.css`)
-3. Copie a pasta `Obsidian-Sync-to-Notion` extraída para `.obsidian/plugins/` dentro do seu vault do Obsidian
-4. Abra o Obsidian, vá em **Configurações → Plugins Comunitários → Plugins Instalados**
-=======
 1. Baixe o arquivo mais recente: `Obsidian-Sync-to-Notion.zip`  
 2. Extraia o conteúdo do ZIP (`main.js`, `manifest.json` e opcionalmente `styles.css`)  
 3. Copie a pasta `Obsidian-Sync-to-Notion` extraída para `.obsidian/plugins/` dentro do seu vault do Obsidian  
 4. Abra o Obsidian, vá em **Configurações → Plugins Comunitários → Plugins Instalados**  
->>>>>>> 2d7a7e70ce2fc38f5b4326c6bcad65a2b2c418fb
 5. Ative o plugin **Notion Sync**
 
 > ⚠️ Se a pasta `.plugins/` não existir, crie-a manualmente.
@@ -141,18 +120,6 @@ Este plugin cria uma ponte entre seu vault do Obsidian e seu workspace do Notion
 
 Antes de usar o plugin, você precisa:
 
-<<<<<<< HEAD
-1. **Token de API do Notion**:
-
-   - Acesse [Integrações do Notion](https://www.notion.so/my-integrations)
-   - Crie uma nova integração
-   - Copie o token secreto
-
-2. **ID da Página Raiz**:
-
-   - Crie ou escolha uma página no Notion onde suas notas serão sincronizadas
-   - Compartilhe esta página com sua integração
-=======
 1. **Token de API do Notion**:  
    - Acesse [Integrações do Notion](https://www.notion.so/my-integrations)  
    - Crie uma nova integração  
@@ -161,7 +128,6 @@ Antes de usar o plugin, você precisa:
 2. **ID da Página Raiz**:  
    - Crie ou escolha uma página no Notion onde suas notas serão sincronizadas  
    - Compartilhe esta página com sua integração  
->>>>>>> 2d7a7e70ce2fc38f5b4326c6bcad65a2b2c418fb
    - Copie o ID da página da URL (é a string longa após o nome do workspace e antes de qualquer '?')
 
 3. **Configure o Plugin**:  
@@ -199,13 +165,8 @@ O plugin adiciona estes comandos ao Obsidian:
 
 ## 🛠️ Soluções de Problemas
 
-<<<<<<< HEAD
-- **Falha na Autenticação**: Verifique se seu token do Notion está correto e ainda é válido
-- **Página Não Encontrada**: Certifique-se de que o ID da página raiz está correto e a página está compartilhada com sua integração
-=======
 - **Falha na Autenticação**: Verifique se seu token do Notion está correto e ainda é válido  
 - **Página Não Encontrada**: Certifique-se de que o ID da página raiz está correto e a página está compartilhada com sua integração  
->>>>>>> 2d7a7e70ce2fc38f5b4326c6bcad65a2b2c418fb
 - **Problemas de Formatação**: Alguns elementos markdown complexos podem não renderizar perfeitamente no Notion
 
 ## 🔜 Roadmap
